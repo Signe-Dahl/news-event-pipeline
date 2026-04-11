@@ -3,7 +3,8 @@ name: Daily Pipeline + Update HF API DB
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 7 * * *"
+    - cron: "0 7 * * *" 
+      timezone: "Europe/Copenhagen"
 
 permissions:
   contents: write
