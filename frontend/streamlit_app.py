@@ -12,9 +12,7 @@ st.set_page_config(
     layout="wide",
 )
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = BASE_DIR / "data" / "news.db"
-
+DB_PATH = Path("/app/data/news.db")
 
 @st.cache_data(ttl=300)
 def load_classified_articles() -> pd.DataFrame:
