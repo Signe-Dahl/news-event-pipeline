@@ -1,10 +1,9 @@
-name: Daily News Pipeline
+name: Daily Pipeline + Update HF API DB
 
 on:
   workflow_dispatch:
   schedule:
     - cron: "0 7 * * *"
-      timezone: "Europe/Copenhagen"
 
 permissions:
   contents: write
@@ -18,7 +17,7 @@ jobs:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
 
     steps:
-      - name: Check out repository
+      - name: Check out GitHub repo
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -27,12 +26,12 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r backend/requirements.txt
+        run: pip install -r requirements.txt
 
       - name: Run pipeline
         run: python backend/main.py
 
-      - name: Commit updated database
+      - name: Commit updated SQLite DB back to GitHub
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -40,8 +39,34 @@ jobs:
           git add data/news.db
 
           if git diff --cached --quiet; then
-            echo "No database changes to commit."
+            echo "No GitHub DB changes to commit."
           else
-            git commit -m "Update news database"
+            git commit -m "Update news.db"
+            git push
+          fi
+
+      - name: Clone Hugging Face Space repo
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git clone https://Signe22:$HF_TOKEN@huggingface.co/spaces/Signe22/Article_Data_API hf-space
+
+      - name: Copy only the DB into Hugging Face Space repo
+        run: |
+          mkdir -p hf-space/data
+          cp data/news.db hf-space/data/news.db
+
+      - name: Commit and push DB update to Hugging Face Space
+        working-directory: hf-space
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add data/news.db
+
+          if git diff --cached --quiet; then
+            echo "No HF DB changes to commit."
+          else
+            git commit -m "Update data/news.db"
             git push
           fi

@@ -1,8 +1,6 @@
 # streamlit_app.py
-import sqlite3
-from pathlib import Path
-
 import pandas as pd
+import requests
 import streamlit as st
 
 
@@ -12,42 +10,36 @@ st.set_page_config(
     layout="wide",
 )
 
-DB_PATH = Path("/app/data/news.db")
+API_BASE_URL = "https://Signe22-Article-Data-API.hf.space"
+
 
 @st.cache_data(ttl=300)
 def load_classified_articles() -> pd.DataFrame:
-    if not DB_PATH.exists():
-        return pd.DataFrame()
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/articles",
+            params={"limit": 500},
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
 
-    conn = sqlite3.connect(DB_PATH)
-    query = """
-        SELECT
-            article_id,
-            title,
-            description,
-            clean_text,
-            label,
-            raw_label,
-            source,
-            url,
-            published_at,
-            classified_at
-        FROM classified_articles
-        ORDER BY published_at DESC
-    """
-    df = pd.read_sql_query(query, conn)
-    conn.close()
+        df = pd.DataFrame(data)
 
-    if df.empty:
+        if df.empty:
+            return df
+
+        df["published_at"] = pd.to_datetime(df["published_at"], errors="coerce", utc=True)
+        df["classified_at"] = pd.to_datetime(df["classified_at"], errors="coerce", utc=True)
+
+        df["published_date"] = df["published_at"].dt.date
+        df["published_day"] = df["published_at"].dt.strftime("%Y-%m-%d")
+
         return df
 
-    df["published_at"] = pd.to_datetime(df["published_at"], errors="coerce", utc=True)
-    df["classified_at"] = pd.to_datetime(df["classified_at"], errors="coerce", utc=True)
-
-    df["published_date"] = df["published_at"].dt.date
-    df["published_day"] = df["published_at"].dt.strftime("%Y-%m-%d")
-
-    return df
+    except Exception as e:
+        st.error(f"Failed to load articles from API: {e}")
+        return pd.DataFrame()
 
 
 def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
@@ -172,7 +164,11 @@ def render_article_browser(df: pd.DataFrame) -> None:
     display_df = display_df.head(max_rows)
 
     for _, row in display_df.iterrows():
-        published_str = row["published_at"].strftime("%Y-%m-%d %H:%M UTC") if pd.notnull(row["published_at"]) else "Unknown"
+        published_str = (
+            row["published_at"].strftime("%Y-%m-%d %H:%M UTC")
+            if pd.notnull(row["published_at"])
+            else "Unknown"
+        )
 
         with st.expander(f"{row['title']}"):
             meta1, meta2, meta3 = st.columns(3)
@@ -193,6 +189,7 @@ def render_article_browser(df: pd.DataFrame) -> None:
                 if pd.notnull(row["raw_label"]) and str(row["raw_label"]).strip():
                     st.caption(f"Model output: {row['raw_label']}")
 
+
 def main() -> None:
     st.title("📰 Green Energy News Event Dashboard")
     st.write(
@@ -203,7 +200,7 @@ def main() -> None:
     df = load_classified_articles()
 
     if df.empty:
-        st.warning("No classified articles found yet. Run the pipeline first.")
+        st.warning("No classified articles found yet. Check whether the API is live and returning data.")
         return
 
     filtered_df = apply_filters(df)
@@ -215,6 +212,7 @@ def main() -> None:
 
     with tab2:
         render_article_browser(filtered_df)
+
 
 if __name__ == "__main__":
     main()
