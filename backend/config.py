@@ -35,7 +35,7 @@ COLLECTION_PROFILE = {
     },
     "query": '("clean energy" OR "renewable energy" OR hydrogen OR solar OR wind OR battery) '
          'AND (project OR plant OR investment OR funding OR partnership OR launch OR development OR deal) '
-         'NOT (stocks OR stock OR shares OR market OR keyboard OR gaming OR game OR games OR medicare OR subway OR sale OR discount OR buy OR coupon OR tracklist)',
+         'NOT (stocks OR stock OR shares OR market OR keyboard OR gaming OR game OR games OR medicare OR subway OR sale OR discount OR buy OR coupon OR tracklist OR shipping)',
 }
 
 # Classification / Rate limiting
