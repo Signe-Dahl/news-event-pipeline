@@ -1,3 +1,4 @@
+# monitor.py
 import json
 import logging
 import sqlite3
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 client = Groq()
 
-JUDGE_MODEL_NAME = "MONITOR_MODEL_NAME"
+JUDGE_MODEL_NAME = MONITOR_MODEL_NAME
 
 
 def init_monitoring_table() -> None:
