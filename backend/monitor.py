@@ -402,4 +402,4 @@ def run_monitoring(limit: Optional[int] = None) -> List[Dict[str, Any]]:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    run_monitoring(limit)
+    run_monitoring()
