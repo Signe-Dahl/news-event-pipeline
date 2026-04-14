@@ -4,7 +4,7 @@ import logging
 import sqlite3
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from groq import Groq
 
@@ -108,7 +108,7 @@ def init_monitoring_table() -> None:
     conn.close()
 
 
-def fetch_classified_articles(limit: int | None = None) -> List[Dict[str, Any]]:
+def fetch_classified_articles(limit: Optional[int] = None) -> List[Dict[str, Any]]:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -174,36 +174,22 @@ def build_monitor_prompt(article: Dict[str, Any]) -> str:
     predicted_label = article.get("label", "")
 
     return f"""
-You are evaluating the output of a green energy and climate technology news classification pipeline.
+Evaluate this classified news article.
 
-Evaluate two things:
+Domain: green energy and climate technology.
 
-1. Relevance:
-Determine whether the article is relevant to the intended domain of green energy and climate technology.
-
-2. Label quality:
-Determine whether the predicted label is appropriate for the article.
-
-Possible classification labels in the pipeline:
+Allowed pipeline labels:
 {categories}
 
-Article:
-Title: {title}
-Description: {description}
-
+Article title: {title}
+Article description: {description}
 Predicted label: {predicted_label}
 
-Judging guidance:
-- Use "relevant" if the article is clearly about green energy, climate technology, clean infrastructure, low-carbon energy systems, or closely related industrial developments.
-- Use "not_relevant" if it is outside this domain.
-- Use "uncertain" if relevance is ambiguous.
+Judge:
+1. Is the article relevant to the domain?
+2. Is the predicted label appropriate?
 
-- Use "correct" if the predicted label matches the main event described.
-- Use "incorrect" if the predicted label does not match.
-- Use "uncertain" if there is not enough information to judge confidently.
-
-Keep each explanation under 20 words.
-Return only the structured result.
+Keep explanations short.
 """.strip()
 
 
@@ -247,7 +233,7 @@ def requires_human_review(result: Dict[str, Any]) -> int:
     return 0
 
 
-def judge_single_article(article: Dict[str, Any]) -> Dict[str, Any]:
+def judge_single_article(article: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     prompt = build_monitor_prompt(article)
 
     for attempt in range(1, MONITOR_MAX_RETRIES + 1):
@@ -259,10 +245,7 @@ def judge_single_article(article: Dict[str, Any]) -> Dict[str, Any]:
                 messages=[
                     {
                         "role": "system",
-                        "content": (
-                            "You are a strict evaluation assistant. "
-                            "Return only valid structured output."
-                        ),
+                        "content": "You are a strict evaluation assistant. Return concise structured output only.",
                     },
                     {
                         "role": "user",
@@ -270,7 +253,7 @@ def judge_single_article(article: Dict[str, Any]) -> Dict[str, Any]:
                     },
                 ],
                 temperature=0,
-                max_completion_tokens=600,
+                max_completion_tokens=700,
                 top_p=1,
                 stream=False,
                 response_format=MONITOR_RESPONSE_SCHEMA,
@@ -310,22 +293,7 @@ def judge_single_article(article: Dict[str, Any]) -> Dict[str, Any]:
                     MONITOR_MAX_RETRIES,
                     article.get("title", ""),
                 )
-
-                fallback = article.copy()
-                fallback.update({
-                    "relevance_judgment": "uncertain",
-                    "relevance_confidence": "low",
-                    "relevance_explanation": f"Judge model failed: {e}",
-                    "label_judgment": "uncertain",
-                    "label_confidence": "low",
-                    "label_explanation": f"Judge model failed: {e}",
-                    "overall_status": "needs_review",
-                    "requires_human_review": 1,
-                    "judge_model": JUDGE_MODEL_NAME,
-                    "raw_judge_response": "",
-                    "evaluated_at": datetime.now(timezone.utc).isoformat(),
-                })
-                return fallback
+                return None
 
 
 def save_monitoring_results(results: List[Dict[str, Any]]) -> None:
@@ -391,7 +359,7 @@ def save_monitoring_results(results: List[Dict[str, Any]]) -> None:
     conn.close()
 
 
-def run_monitoring(limit: int | None = None) -> List[Dict[str, Any]]:
+def run_monitoring(limit: Optional[int] = None) -> List[Dict[str, Any]]:
     logger.info("Starting automated monitoring")
 
     init_monitoring_table()
@@ -405,23 +373,33 @@ def run_monitoring(limit: int | None = None) -> List[Dict[str, Any]]:
         logger.info("No new classified articles to monitor")
         return []
 
-    monitored_results = []
+    monitored_results: List[Dict[str, Any]] = []
 
     for i, article in enumerate(articles_to_monitor, start=1):
         logger.info("Monitoring article %s/%s", i, len(articles_to_monitor))
 
         result = judge_single_article(article)
-        monitored_results.append(result)
+
+        if result is not None:
+            monitored_results.append(result)
+        else:
+            logger.warning(
+                "Skipping article due to monitoring failure: %s",
+                article.get("title", ""),
+            )
 
         if i < len(articles_to_monitor):
             time.sleep(MONITOR_REQUEST_DELAY_SECONDS)
 
-    save_monitoring_results(monitored_results)
+    if monitored_results:
+        save_monitoring_results(monitored_results)
+        logger.info("Finished monitoring and saved %s results", len(monitored_results))
+    else:
+        logger.info("No successful monitoring results to save")
 
-    logger.info("Finished monitoring and saved %s results", len(monitored_results))
     return monitored_results
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    run_monitoring()
+    run_monitoring(limit)
