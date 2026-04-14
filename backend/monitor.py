@@ -202,6 +202,7 @@ Judging guidance:
 - Use "incorrect" if the predicted label does not match.
 - Use "uncertain" if there is not enough information to judge confidently.
 
+Keep each explanation under 20 words.
 Return only the structured result.
 """.strip()
 
@@ -269,7 +270,7 @@ def judge_single_article(article: Dict[str, Any]) -> Dict[str, Any]:
                     },
                 ],
                 temperature=0,
-                max_completion_tokens=300,
+                max_completion_tokens=600,
                 top_p=1,
                 stream=False,
                 response_format=MONITOR_RESPONSE_SCHEMA,
