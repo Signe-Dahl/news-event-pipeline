@@ -83,3 +83,9 @@ Classify each article into exactly one of these categories:
 
 Return only the category label.
 """.strip()
+
+# Monitoring / judge model settings
+MONITOR_MODEL_NAME = "openai/gpt-oss-120b"
+MONITOR_REQUEST_DELAY_SECONDS = 2.5
+MONITOR_MAX_RETRIES = 3
+MONITOR_RETRY_BACKOFF_SECONDS = 5.0

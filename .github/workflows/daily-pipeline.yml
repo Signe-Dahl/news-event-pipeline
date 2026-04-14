@@ -3,8 +3,7 @@ name: Daily Pipeline + Update HF API DB
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 7 * * *" 
-      timezone: "Europe/Copenhagen"
+    - cron: "0 5 * * *" 
 
 permissions:
   contents: write
@@ -31,6 +30,9 @@ jobs:
 
       - name: Run pipeline
         run: python backend/main.py
+
+      - name: Run monitoring
+        run: python backend/monitor.py
 
       - name: Commit updated SQLite DB back to GitHub
         run: |
