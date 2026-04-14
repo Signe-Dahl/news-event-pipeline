@@ -16,11 +16,56 @@ from config import (
     MONITOR_MAX_RETRIES,
     MONITOR_RETRY_BACKOFF_SECONDS,
 )
+
 logger = logging.getLogger(__name__)
 
 client = Groq()
 
 JUDGE_MODEL_NAME = MONITOR_MODEL_NAME
+
+MONITOR_RESPONSE_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "monitoring_evaluation",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "relevance_judgment": {
+                    "type": "string",
+                    "enum": ["relevant", "not_relevant", "uncertain"],
+                },
+                "relevance_confidence": {
+                    "type": "string",
+                    "enum": ["high", "medium", "low"],
+                },
+                "relevance_explanation": {
+                    "type": "string",
+                },
+                "label_judgment": {
+                    "type": "string",
+                    "enum": ["correct", "incorrect", "uncertain"],
+                },
+                "label_confidence": {
+                    "type": "string",
+                    "enum": ["high", "medium", "low"],
+                },
+                "label_explanation": {
+                    "type": "string",
+                },
+            },
+            "required": [
+                "relevance_judgment",
+                "relevance_confidence",
+                "relevance_explanation",
+                "label_judgment",
+                "label_confidence",
+                "label_explanation",
+            ],
+            "additionalProperties": False,
+        },
+    },
+}
 
 
 def init_monitoring_table() -> None:
@@ -131,23 +176,15 @@ def build_monitor_prompt(article: Dict[str, Any]) -> str:
     return f"""
 You are evaluating the output of a green energy and climate technology news classification pipeline.
 
-Your task is to evaluate TWO things:
+Evaluate two things:
 
 1. Relevance:
-Decide whether the article is relevant to the intended domain of green energy and climate technology.
-Allowed values:
-- relevant
-- not_relevant
-- uncertain
+Determine whether the article is relevant to the intended domain of green energy and climate technology.
 
 2. Label quality:
-Decide whether the predicted label is appropriate for the article.
-Allowed values:
-- correct
-- incorrect
-- uncertain
+Determine whether the predicted label is appropriate for the article.
 
-Possible classification labels in the pipeline are:
+Possible classification labels in the pipeline:
 {categories}
 
 Article:
@@ -156,41 +193,29 @@ Description: {description}
 
 Predicted label: {predicted_label}
 
-Return your result as valid JSON with exactly these keys:
-{{
-  "relevance_judgment": "relevant | not_relevant | uncertain",
-  "relevance_confidence": "high | medium | low",
-  "relevance_explanation": "short explanation",
-  "label_judgment": "correct | incorrect | uncertain",
-  "label_confidence": "high | medium | low",
-  "label_explanation": "short explanation"
-}}
+Judging guidance:
+- Use "relevant" if the article is clearly about green energy, climate technology, clean infrastructure, low-carbon energy systems, or closely related industrial developments.
+- Use "not_relevant" if it is outside this domain.
+- Use "uncertain" if relevance is ambiguous.
 
-Return JSON only. No markdown. No extra text.
+- Use "correct" if the predicted label matches the main event described.
+- Use "incorrect" if the predicted label does not match.
+- Use "uncertain" if there is not enough information to judge confidently.
+
+Return only the structured result.
 """.strip()
 
 
 def parse_judge_response(raw_text: str) -> Dict[str, Any]:
-    raw_text = raw_text.strip()
-
-    try:
-        parsed = json.loads(raw_text)
-    except json.JSONDecodeError:
-        # fallback if the model returns extra whitespace or text around JSON
-        start = raw_text.find("{")
-        end = raw_text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            parsed = json.loads(raw_text[start:end + 1])
-        else:
-            raise
+    parsed = json.loads(raw_text)
 
     return {
-        "relevance_judgment": parsed.get("relevance_judgment", "uncertain"),
-        "relevance_confidence": parsed.get("relevance_confidence", "low"),
-        "relevance_explanation": parsed.get("relevance_explanation", ""),
-        "label_judgment": parsed.get("label_judgment", "uncertain"),
-        "label_confidence": parsed.get("label_confidence", "low"),
-        "label_explanation": parsed.get("label_explanation", ""),
+        "relevance_judgment": parsed["relevance_judgment"],
+        "relevance_confidence": parsed["relevance_confidence"],
+        "relevance_explanation": parsed["relevance_explanation"],
+        "label_judgment": parsed["label_judgment"],
+        "label_confidence": parsed["label_confidence"],
+        "label_explanation": parsed["label_explanation"],
     }
 
 
@@ -226,18 +251,28 @@ def judge_single_article(article: Dict[str, Any]) -> Dict[str, Any]:
 
     for attempt in range(1, MONITOR_MAX_RETRIES + 1):
         try:
+            logger.info("Using judge model: %s", JUDGE_MODEL_NAME)
+
             completion = client.chat.completions.create(
                 model=JUDGE_MODEL_NAME,
                 messages=[
                     {
+                        "role": "system",
+                        "content": (
+                            "You are a strict evaluation assistant. "
+                            "Return only valid structured output."
+                        ),
+                    },
+                    {
                         "role": "user",
                         "content": prompt,
-                    }
+                    },
                 ],
                 temperature=0,
                 max_completion_tokens=300,
                 top_p=1,
                 stream=False,
+                response_format=MONITOR_RESPONSE_SCHEMA,
                 stop=None,
             )
 
