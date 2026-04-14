@@ -1,0 +1,8 @@
+services:
+  app:
+    build: .
+    container_name: news-event-monitoring
+    ports:
+      - "8501:8501"
+    volumes:
+      - ../data:/app/data
