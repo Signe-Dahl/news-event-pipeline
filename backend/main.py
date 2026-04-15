@@ -6,6 +6,9 @@ from collector import collect_articles
 from preprocess import preprocess_articles
 from classifier import classify_articles
 
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
