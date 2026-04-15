@@ -5,9 +5,11 @@ This project implements an end-to-end data pipeline for collecting, processing, 
 ---
 
 ## Project Overview
+### Pipeline diagram
 <img width="1020" height="894" alt="image" src="https://github.com/user-attachments/assets/c3a5f7db-f50d-4764-9bfb-625cb25417f5" />
 
 
+### Description of steps
 The pipeline performs the following steps:
 
 1. **Data Collection**  
