@@ -1,4 +1,8 @@
 # monitor.py
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import json
 import logging
 import sqlite3
