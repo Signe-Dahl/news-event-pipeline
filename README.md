@@ -117,6 +117,8 @@ The Streamlit frontend is containerized using Docker and started with Docker Com
 
 ### Run the frontend with Docker Compose
 
+This method requires that the repository has been cloned locally.
+
 From the frontend/ directory:
 ```bash
 docker compose up --build
