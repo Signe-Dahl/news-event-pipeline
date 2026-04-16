@@ -13,11 +13,18 @@ logger = logging.getLogger(__name__)
 
 # Text normalizer
 def normalize_whitespace(text: str) -> str:
+    """
+    Remove extra spaces and normalize whitespace in text fields.
+    """
     return " ".join((text or "").split()).strip()
 
 
 # Relevance filtering
 def is_relevant_article(article: Dict[str, Any]) -> bool:
+    """
+    Apply simple relevance filtering rules to remove low-value articles
+    before classification.
+    """
     title = (article.get("title") or "").lower()
     description = (article.get("description") or "").lower()
 
@@ -43,6 +50,9 @@ def is_relevant_article(article: Dict[str, Any]) -> bool:
 
 # Build classification input
 def build_clean_text(article: Dict[str, Any]) -> str:
+    """
+    Build a single formatted text field used as input to the classifier.
+    """
     title = normalize_whitespace(article.get("title", ""))
     description = normalize_whitespace(article.get("description", ""))
 
@@ -56,6 +66,9 @@ def build_clean_text(article: Dict[str, Any]) -> str:
 
 # Process single article
 def preprocess_article(article: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Clean and normalize one article, then add the clean_text field.
+    """
     processed = article.copy()
 
     processed["title"] = normalize_whitespace(processed.get("title", ""))
@@ -70,6 +83,10 @@ def preprocess_article(article: Dict[str, Any]) -> Dict[str, Any]:
 
 # Main preprocessing steps
 def preprocess_articles(raw_articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Run the full preprocessing step:
+    filter irrelevant content and normalize the remaining articles.
+    """
     logger.info("Starting preprocessing")
 
     # Step 1: filter irrelevant
@@ -86,7 +103,7 @@ def preprocess_articles(raw_articles: List[Dict[str, Any]]) -> List[Dict[str, An
 
     return processed_articles
 
-# Test
+# Simple test run for debugging and validation
 if __name__ == "__main__":
     sample_articles = [
         {

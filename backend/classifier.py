@@ -18,10 +18,15 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
+# Initialize Groq client using API key from environment
 client = Groq()
 
-
+# Create data table
 def init_classified_articles_table() -> None:
+    """
+    Create the classified_articles table if it does not exist.
+    Stores classification results and associated metadata.
+    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -43,8 +48,11 @@ def init_classified_articles_table() -> None:
     conn.commit()
     conn.close()
 
-
+# Build the prompt
 def build_classification_prompt(article: Dict[str, Any]) -> str:
+    """
+    Construct the user prompt sent to the LLM using the cleaned article text.
+    """
     clean_text = article.get("clean_text", "").strip()
 
     return f"""
@@ -53,8 +61,12 @@ Classify the following article:
 {clean_text}
 """.strip()
 
-
+# Normalize output label
 def normalize_label(raw_label: str) -> str:
+    """
+    Normalize model output to one of the predefined action categories.
+    Falls back to 'other' if no match is found.
+    """
     cleaned = raw_label.strip().lower()
 
     for category in ACTION_CATEGORIES:
@@ -63,8 +75,12 @@ def normalize_label(raw_label: str) -> str:
 
     return "other"
 
-
+# Classify an article
 def classify_single_article(article: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Classify a single article using the LLM with retry logic.
+    Returns the article with predicted label and metadata.
+    """
     prompt = build_classification_prompt(article)
 
     for attempt in range(1, CLASSIFIER_MAX_RETRIES + 1):
@@ -126,14 +142,18 @@ def classify_single_article(article: Dict[str, Any]) -> Dict[str, Any]:
 
                 return failed_article
 
-
+# Save the articles that have been classified
 def save_classified_articles(articles: List[Dict[str, Any]]) -> None:
+    """
+    Save classified articles to the database.
+    Uses INSERT OR IGNORE to update existing entries.
+    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     for article in articles:
         cursor.execute("""
-            INSERT OR REPLACE INTO classified_articles (
+            INSERT OR IGNORE INTO classified_articles (
                 article_id,
                 title,
                 description,
@@ -161,8 +181,12 @@ def save_classified_articles(articles: List[Dict[str, Any]]) -> None:
     conn.commit()
     conn.close()
 
-
+# Run the full classifying pipeline
 def classify_articles(processed_articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Classify a batch of preprocessed articles sequentially.
+    Applies rate limiting and saves results to the database.
+    """
     logger.info("Starting classification for %s articles", len(processed_articles))
     logger.info(
         "Classifier settings: delay=%.1fs, retries=%s, backoff=%.1fs",
@@ -190,7 +214,7 @@ def classify_articles(processed_articles: List[Dict[str, Any]]) -> List[Dict[str
 
     return classified_articles
 
-
+# Simple test run for debugging and validation
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 

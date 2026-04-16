@@ -20,21 +20,29 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-
+# Create unique article ID
 def make_article_id(
     url: str,
     title: str,
     source: str = "",
     published_at: str = "",
 ) -> str:
+    """
+    Create a stable unique identifier for each article.
+    Prefer URL when available, otherwise fall back to title + source + timestamp.
+    """
     if url:
         base = url.strip().lower()
     else:
         base = f"{title.strip().lower()}|{(source or '').strip().lower()}|{(published_at or '').strip()}"
     return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
-
+# Create data table
 def init_raw_articles_table() -> None:
+    """
+    Create the raw_articles table if it does not already exist.
+    Stores original article data and collection metadata.
+    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -59,8 +67,11 @@ def init_raw_articles_table() -> None:
     conn.commit()
     conn.close()
 
-
+# Fetch articles from NewsAPI
 def fetch_articles(days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]]:
+    """
+    Request articles from NewsAPI using the configured query and date range.
+    """
     if not NEWSAPI_API_KEY:
         raise ValueError("NEWSAPI_API_KEY is missing")
 
@@ -95,8 +106,11 @@ def fetch_articles(days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]]:
 
     return data.get("articles", [])
 
-
+# Normalize article structure
 def normalize_article(article: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert the raw API response into a consistent internal article structure.
+    """
     title = (article.get("title") or "").strip()
     description = (article.get("description") or "").strip()
     url = (article.get("url") or "").strip()
@@ -126,8 +140,11 @@ def normalize_article(article: Dict[str, Any]) -> Dict[str, Any]:
         "raw": article,
     }
 
-
+# Deduplicate articles within the current batch
 def deduplicate_articles(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Remove duplicate articles within the current fetched batch.
+    """
     seen = set()
     unique = []
 
@@ -139,7 +156,7 @@ def deduplicate_articles(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]
 
     return unique
 
-
+# Get existing article IDs from the database 
 def get_existing_article_ids(article_ids: List[str]) -> Set[str]:
     """
     Return the subset of article_ids that already exist in raw_articles.
@@ -163,10 +180,11 @@ def get_existing_article_ids(article_ids: List[str]) -> Set[str]:
 
     return {row[0] for row in rows}
 
-
+# Filter out articles already stored
 def filter_new_articles(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Keep only articles not already stored in raw_articles.
+    Keep only articles that are not already stored in the database.
+    This prevents reprocessing of previously seen articles across runs.
     """
     article_ids = [article["article_id"] for article in articles]
     existing_ids = get_existing_article_ids(article_ids)
@@ -184,8 +202,12 @@ def filter_new_articles(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
     return new_articles
 
-
+# Save the new articles
 def save_raw_articles(articles: List[Dict[str, Any]]) -> None:
+    """
+    Save new raw articles to the database.
+    INSERT OR IGNORE adds an extra safeguard against duplicate primary keys.
+    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -225,8 +247,13 @@ def save_raw_articles(articles: List[Dict[str, Any]]) -> None:
     conn.commit()
     conn.close()
 
-
+# Full collection pipeline
 def collect_articles(days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]]:
+    """
+    Run the full collection step:
+    fetch from API, normalize, deduplicate, filter existing records, and save new rows.
+    Returns only new articles for downstream processing.
+    """
     logger.info("Collecting articles from the last %s day(s)", days_back)
 
     init_raw_articles_table()
@@ -248,7 +275,7 @@ def collect_articles(days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]
 
     return new_articles
 
-
+# Simple test run for debugging and validation
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 

@@ -23,10 +23,13 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
+# Initialize Groq client using API key from environment
 client = Groq()
 
+# Judge model used for automated evaluation
 JUDGE_MODEL_NAME = MONITOR_MODEL_NAME
 
+# Strict schema for structured LLM judge output
 MONITOR_RESPONSE_SCHEMA = {
     "type": "json_schema",
     "json_schema": {
@@ -73,6 +76,10 @@ MONITOR_RESPONSE_SCHEMA = {
 
 
 def init_monitoring_table() -> None:
+    """
+    Create the monitoring_results table if it does not already exist.
+    Stores automated evaluation outputs and related metadata.
+    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -113,6 +120,9 @@ def init_monitoring_table() -> None:
 
 
 def fetch_classified_articles(limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    """
+    Load classified articles from the database for monitoring.
+    """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -146,6 +156,9 @@ def fetch_classified_articles(limit: Optional[int] = None) -> List[Dict[str, Any
 
 
 def fetch_already_monitored_article_ids() -> set[str]:
+    """
+    Return article IDs that already have a successful monitoring result.
+    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -157,6 +170,10 @@ def fetch_already_monitored_article_ids() -> set[str]:
 
 
 def filter_unmonitored_articles(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Keep only articles that do not yet have monitoring results.
+    This allows failed evaluations to be retried in later runs.
+    """
     monitored_ids = fetch_already_monitored_article_ids()
     new_articles = [a for a in articles if a["article_id"] not in monitored_ids]
 
@@ -171,6 +188,9 @@ def filter_unmonitored_articles(articles: List[Dict[str, Any]]) -> List[Dict[str
 
 
 def build_monitor_prompt(article: Dict[str, Any]) -> str:
+    """
+    Build the prompt used by the judge model to assess relevance and label quality.
+    """
     categories = ", ".join(ACTION_CATEGORIES)
 
     title = article.get("title", "")
@@ -198,6 +218,9 @@ Keep explanations short.
 
 
 def parse_judge_response(raw_text: str) -> Dict[str, Any]:
+    """
+    Parse structured JSON returned by the judge model.
+    """
     parsed = json.loads(raw_text)
 
     return {
@@ -211,6 +234,9 @@ def parse_judge_response(raw_text: str) -> Dict[str, Any]:
 
 
 def derive_overall_status(result: Dict[str, Any]) -> str:
+    """
+    Derive a higher-level monitoring status from judge outputs.
+    """
     relevance = result["relevance_judgment"]
     label = result["label_judgment"]
 
@@ -226,6 +252,9 @@ def derive_overall_status(result: Dict[str, Any]) -> str:
 
 
 def requires_human_review(result: Dict[str, Any]) -> int:
+    """
+    Flag cases that could be inspected manually.
+    """
     if result["relevance_judgment"] in {"not_relevant", "uncertain"}:
         return 1
     if result["label_judgment"] in {"incorrect", "uncertain"}:
@@ -238,6 +267,10 @@ def requires_human_review(result: Dict[str, Any]) -> int:
 
 
 def judge_single_article(article: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Evaluate one classified article using the judge model.
+    Returns None if all retries fail, so the article can be retried later.
+    """
     prompt = build_monitor_prompt(article)
 
     for attempt in range(1, MONITOR_MAX_RETRIES + 1):
@@ -301,12 +334,15 @@ def judge_single_article(article: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def save_monitoring_results(results: List[Dict[str, Any]]) -> None:
+    """
+    Save successful monitoring results to the database.
+    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     for row in results:
         cursor.execute("""
-            INSERT OR REPLACE INTO monitoring_results (
+            INSERT OR IGNORE INTO monitoring_results (
                 article_id,
                 title,
                 description,
@@ -364,6 +400,10 @@ def save_monitoring_results(results: List[Dict[str, Any]]) -> None:
 
 
 def run_monitoring(limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    """
+    Run the full monitoring step:
+    load classified articles, evaluate unseen ones, and save successful results.
+    """
     logger.info("Starting automated monitoring")
 
     init_monitoring_table()
@@ -403,7 +443,7 @@ def run_monitoring(limit: Optional[int] = None) -> List[Dict[str, Any]]:
 
     return monitored_results
 
-
+# Run monitoring directly for debugging or manual execution
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     run_monitoring()
