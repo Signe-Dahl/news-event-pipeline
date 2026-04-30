@@ -33,9 +33,10 @@ COLLECTION_PROFILE = {
         "pageSize": DEFAULT_LIMIT,
         "page": 1,
     },
-    "query": '("clean energy" OR "renewable energy" OR hydrogen OR solar OR wind OR battery) '
-         'AND (project OR plant OR investment OR funding OR partnership OR launch OR development OR deal) '
-         'NOT (stocks OR stock OR shares OR market OR keyboard OR gaming OR game OR games OR medicare OR subway OR sale OR discount OR buy OR coupon OR tracklist OR shipping)',
+    "query": (
+        '("clean energy" OR "renewable energy" OR hydrogen OR solar OR wind OR battery) '
+        'AND (project OR plant OR investment OR funding OR partnership OR launch OR development OR deal)'
+    ),
 }
 
 # Classification / Rate limiting
@@ -44,21 +45,8 @@ CLASSIFIER_MAX_RETRIES = 3
 CLASSIFIER_RETRY_BACKOFF_SECONDS = 5.0
 
 # Preprocessing rules
-EXCLUDED_TITLE_TERMS = [
-    "stocks to consider",
-    "stocks to watch",
-    "watchlist",
-    "stock screener",
-    "best green energy stocks",
-    "top green energy stocks",
-    "still a buy",
-    "trading up",
-    "promising renewable energy stocks",
-]
-
-EXCLUDED_DESCRIPTION_TERMS = [
-    "marketbeat",
-]
+EXCLUDED_TITLE_TERMS = []
+EXCLUDED_DESCRIPTION_TERMS = []
 
 MIN_DESCRIPTION_LENGTH = 40
 
@@ -73,6 +61,7 @@ ACTION_CATEGORIES = [
     "funding/investment",
     "market/finance",
     "other",
+    "not relevant to field",
 ]
 
 CLASSIFICATION_SYSTEM_PROMPT = f"""
@@ -81,7 +70,11 @@ Classify each article into exactly one of these categories:
 
 {", ".join(ACTION_CATEGORIES)}
 
-Return only the category label.
+Rules:
+- If the article is NOT primarily about green energy, climate technology, decarbonization, or sustainability, you MUST classify it as "not relevant to field".
+- Only choose another category if the article clearly relates to green energy or climate technology.
+- If relevance is weak, indirect, or ambiguous, classify it as "not relevant to field".
+- Always return exactly one category label and nothing else.
 """.strip()
 
 # Monitoring / judge model settings
