@@ -23,7 +23,6 @@ The pipeline performs the following steps:
 
 4. **Monitoring (LLM-as-a-Judge)**  
    A Second LLM evaluates:
-   - Whether the article is relevant to the domain
    - Whether the predicted label is correct
 
 5. **Storage**  
