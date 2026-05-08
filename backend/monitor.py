@@ -39,17 +39,6 @@ MONITOR_RESPONSE_SCHEMA = {
         "schema": {
             "type": "object",
             "properties": {
-                "relevance_judgment": {
-                    "type": "string",
-                    "enum": ["relevant", "not_relevant", "uncertain"],
-                },
-                "relevance_confidence": {
-                    "type": "string",
-                    "enum": ["high", "medium", "low"],
-                },
-                "relevance_explanation": {
-                    "type": "string",
-                },
                 "label_judgment": {
                     "type": "string",
                     "enum": ["correct", "incorrect", "uncertain"],
@@ -63,9 +52,6 @@ MONITOR_RESPONSE_SCHEMA = {
                 },
             },
             "required": [
-                "relevance_judgment",
-                "relevance_confidence",
-                "relevance_explanation",
                 "label_judgment",
                 "label_confidence",
                 "label_explanation",
@@ -190,7 +176,7 @@ def filter_unmonitored_articles(articles: List[Dict[str, Any]]) -> List[Dict[str
 
 def build_monitor_prompt(article: Dict[str, Any]) -> str:
     """
-    Build the prompt used by the judge model to assess relevance and label quality.
+    Build the prompt used by the judge model to assess label quality only.
     """
     categories = ", ".join(ACTION_CATEGORIES)
 
@@ -210,17 +196,15 @@ Article title: {title}
 Article description: {description}
 Predicted label: {predicted_label}
 
-Important rule:
-If the predicted label is "{NOT_RELEVANT_LABEL}" and the article is not actually about green energy or climate technology, then the classifier is correct. Do not treat this as a collection issue.
+Judge only whether the predicted label is appropriate.
 
-Judge:
-1. Is the article relevant to the domain?
-2. Is the predicted label appropriate?
+Important rule:
+If the predicted label is "{NOT_RELEVANT_LABEL}" and the article is not actually about green energy or climate technology, then the classifier is correct.
 
 Label judgment rules:
-- If the article is not relevant and predicted label is "{NOT_RELEVANT_LABEL}", label_judgment should be "correct".
-- If the article is relevant but predicted label is "{NOT_RELEVANT_LABEL}", label_judgment should be "incorrect".
-- If the article is not relevant but predicted label is something else, label_judgment should be "incorrect".
+- If the predicted label is appropriate, label_judgment should be "correct".
+- If the predicted label is inappropriate, label_judgment should be "incorrect".
+- If there is not enough information to decide, label_judgment should be "uncertain".
 
 Keep explanations short.
 """.strip()
@@ -232,36 +216,18 @@ def parse_judge_response(raw_text: str) -> Dict[str, Any]:
     parsed = json.loads(raw_text)
 
     return {
-        "relevance_judgment": parsed["relevance_judgment"],
-        "relevance_confidence": parsed["relevance_confidence"],
-        "relevance_explanation": parsed["relevance_explanation"],
         "label_judgment": parsed["label_judgment"],
         "label_confidence": parsed["label_confidence"],
         "label_explanation": parsed["label_explanation"],
+    }  "label_explanation": parsed["label_explanation"],
     }
 
 
 def derive_overall_status(result: Dict[str, Any], predicted_label: str) -> str:
     """
-    Derive a higher-level monitoring status from judge outputs.
+    Derive a higher-level monitoring status from label judge output.
     """
-    relevance = result["relevance_judgment"]
     label = result["label_judgment"]
-
-    predicted_label = (predicted_label or "").strip().lower()
-    is_predicted_not_relevant = predicted_label == NOT_RELEVANT_LABEL
-
-    if relevance == "not_relevant" and is_predicted_not_relevant and label == "correct":
-        return "ok"
-
-    if relevance == "not_relevant" and not is_predicted_not_relevant:
-        return "classification_issue"
-
-    if relevance == "uncertain":
-        return "needs_review"
-
-    if relevance == "relevant" and is_predicted_not_relevant:
-        return "classification_issue"
 
     if label == "incorrect":
         return "classification_issue"
@@ -274,25 +240,9 @@ def derive_overall_status(result: Dict[str, Any], predicted_label: str) -> str:
 
 def requires_human_review(result: Dict[str, Any], predicted_label: str) -> int:
     """
-    Flag cases that should be inspected manually.
+    Flag label accuracy cases that should be inspected manually.
     """
-    predicted_label = (predicted_label or "").strip().lower()
-    is_predicted_not_relevant = predicted_label == NOT_RELEVANT_LABEL
-
-    if (
-        result["relevance_judgment"] == "not_relevant"
-        and is_predicted_not_relevant
-        and result["label_judgment"] == "correct"
-    ):
-        return 0
-
-    if result["relevance_judgment"] in {"not_relevant", "uncertain"}:
-        return 1
-
     if result["label_judgment"] in {"incorrect", "uncertain"}:
-        return 1
-
-    if result["relevance_confidence"] == "low":
         return 1
 
     if result["label_confidence"] == "low":
@@ -416,9 +366,9 @@ def save_monitoring_results(results: List[Dict[str, Any]]) -> None:
             row.get("published_at"),
             row.get("classified_at"),
 
-            row.get("relevance_judgment"),
-            row.get("relevance_confidence"),
-            row.get("relevance_explanation"),
+            None,
+            None,
+            None,
 
             row.get("label_judgment"),
             row.get("label_confidence"),
