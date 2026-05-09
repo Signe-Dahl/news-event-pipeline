@@ -1,6 +1,6 @@
 # Green Energy News Event Pipeline
 
-This project implements an end-to-end data pipeline for collecting, processing, classifying, and monitoring news articles related to green energy and climate technology. The system combines automated data collection, LLM-based classification, and LLM-as-a-judge evaluation to provide insights into both pipeline performance and data quality.
+This project implements an end-to-end data pipeline for collecting, processing, classifying, and monitoring news articles related to green energy and climate technology. The system combines automated data collection, LLM-based classification, and LLM-as-a-judge evaluation to provide insights into both pipeline performance.
 
 ---
 
@@ -23,7 +23,6 @@ The pipeline performs the following steps:
 
 4. **Monitoring (LLM-as-a-Judge)**  
    A Second LLM evaluates:
-   - Whether the article is relevant to the domain
    - Whether the predicted label is correct
 
 5. **Storage**  
