@@ -219,7 +219,6 @@ def parse_judge_response(raw_text: str) -> Dict[str, Any]:
         "label_judgment": parsed["label_judgment"],
         "label_confidence": parsed["label_confidence"],
         "label_explanation": parsed["label_explanation"],
-    }  "label_explanation": parsed["label_explanation"],
     }
 
 
