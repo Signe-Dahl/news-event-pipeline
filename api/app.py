@@ -1,4 +1,6 @@
+#api/app.py
 from pathlib import Path
+import json
 import sqlite3
 from typing import Optional
 
@@ -58,6 +60,34 @@ def get_sources():
     df = pd.read_sql_query(query, conn)
     conn.close()
     return df["source"].dropna().tolist()
+
+
+@app.get("/summary/today")
+def get_today_summary():
+    conn = get_connection()
+
+    query = """
+        SELECT
+            summary_date,
+            short_summary,
+            key_focus,
+            top_stories,
+            generated_at
+        FROM daily_summaries
+        ORDER BY summary_date DESC
+        LIMIT 1
+    """
+
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+
+    if df.empty:
+        return {}
+
+    row = df.iloc[0].to_dict()
+    row["top_stories"] = json.loads(row["top_stories"]) if row["top_stories"] else []
+
+    return row
 
 
 @app.get("/summary/daily-actions")
