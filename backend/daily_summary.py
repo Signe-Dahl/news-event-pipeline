@@ -7,7 +7,12 @@ from typing import Any, Dict, List, Optional
 
 from groq import Groq
 
-from config import DB_PATH
+from config import (
+    DB_PATH,
+    DAILY_SUMMARY_MODEL,
+    DAILY_SUMMARY_SYSTEM_PROMPT,
+    DAILY_SUMMARY_USER_PROMPT_TEMPLATE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,48 +79,17 @@ def generate_daily_summary() -> Optional[Dict[str, Any]]:
         logger.info("No classified articles found. Skipping daily summary.")
         return None
 
-    prompt = f"""
-You are a green energy and climate tech news analyst.
-
-Based on the articles below, write a short daily briefing.
-
-Focus on:
-- what happened today
-- the most important common pattern across the articles
-- what the user should pay attention to
-
-Return ONLY valid JSON with this exact structure:
-{{
-  "short_summary": "...",
-  "key_focus": "...",
-  "top_stories": [
-    {{
-      "title": "...",
-      "why_it_matters": "..."
-    }}
-  ]
-}}
-
-Rules:
-- Keep the short_summary concise.
-- key_focus should explain the single most important trend or topic to watch today.
-- Do not give investment advice.
-- Include maximum 5 top_stories.
-- Explain why each top story matters.
-- Do not create or return categories.
-- Do not invent information that is not supported by the articles.
-
-Articles:
-{json.dumps(articles, ensure_ascii=False)}
-"""
+    prompt = DAILY_SUMMARY_USER_PROMPT_TEMPLATE.format(
+        articles_json=json.dumps(articles, ensure_ascii=False)
+    )
 
     try:
         completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model=DAILY_SUMMARY_MODEL,
             messages=[
                 {
                     "role": "system",
-                    "content": "You write concise daily briefings about green energy and climate tech.",
+                    "content": DAILY_SUMMARY_SYSTEM_PROMPT,
                 },
                 {
                     "role": "user",
@@ -123,7 +97,7 @@ Articles:
                 },
             ],
             temperature=0.2,
-            max_completion_tokens=800,
+            max_completion_tokens=1200,
         )
 
         raw_response = completion.choices[0].message.content.strip()
@@ -152,9 +126,9 @@ Articles:
         VALUES (?, ?, ?, ?, ?)
     """, (
         today,
-        summary.get("short_summary"),
-        summary.get("key_focus"),
-        json.dumps(summary.get("top_stories", []), ensure_ascii=False),
+        summary.get("executive_summary"),
+        summary.get("recommended_focus"),
+        json.dumps(summary, ensure_ascii=False),
         generated_at,
     ))
 
