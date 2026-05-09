@@ -1,4 +1,4 @@
-# main.py
+#backend/main.py
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from collector import collect_articles
 from preprocess import preprocess_articles
 from classifier import classify_articles
+from daily_summary import generate_daily_summary
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,6 +25,7 @@ def run_pipeline() -> Dict[str, Any]:
     1. Collect raw articles
     2. Preprocess / filter
     3. Classify processed articles
+    4. Generate daily summary
     """
     logger.info("Starting pipeline run")
 
@@ -36,6 +38,9 @@ def run_pipeline() -> Dict[str, Any]:
     classified_articles: List[Dict[str, Any]] = classify_articles(processed_articles)
     logger.info("Classified %s articles", len(classified_articles))
 
+    daily_summary = generate_daily_summary()
+    logger.info("Generated daily summary: %s", daily_summary is not None)
+
     logger.info("Pipeline run completed")
 
     return {
@@ -43,6 +48,7 @@ def run_pipeline() -> Dict[str, Any]:
         "processed_count": len(processed_articles),
         "classified_count": len(classified_articles),
         "classified_articles": classified_articles,
+        "daily_summary": daily_summary,
     }
 
 
@@ -54,6 +60,7 @@ if __name__ == "__main__":
     print(f"Raw articles:        {results['raw_count']}")
     print(f"Processed articles:  {results['processed_count']}")
     print(f"Classified articles: {results['classified_count']}")
+    print(f"Daily summary:       {'yes' if results['daily_summary'] else 'no'}")
 
     preview = results["classified_articles"][:5]
     if preview:

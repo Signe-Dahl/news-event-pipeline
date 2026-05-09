@@ -1,4 +1,4 @@
-# config.py
+# backend/config.py
 import os
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
@@ -83,3 +83,59 @@ MONITOR_REQUEST_DELAY_SECONDS = 4
 MONITOR_MAX_RETRIES = 3
 MONITOR_RETRY_BACKOFF_SECONDS = 5
 NOT_RELEVANT_LABEL = "not relevant to field"
+
+# Daily summary settings
+DAILY_SUMMARY_MODEL = "llama-3.1-8b-instant"
+
+DAILY_SUMMARY_SYSTEM_PROMPT = """
+You write concise decision-support briefings about green energy and climate technology.
+Your role is to identify important signals, emerging patterns, risks, opportunities, and strategic implications.
+""".strip()
+
+DAILY_SUMMARY_USER_PROMPT_TEMPLATE = """
+You are generating a daily decision-support briefing for professionals working with green energy and climate technology.
+
+Based on the articles below, identify:
+- the most important developments
+- the strongest emerging patterns
+- what decision-makers should pay attention to
+- which developments are most actionable or strategically important
+
+Return ONLY valid JSON with this exact structure:
+{{
+  "executive_summary": "...",
+  "key_signal": "...",
+  "recommended_focus": "...",
+  "decision_implications": [
+    "...",
+    "..."
+  ],
+  "watchlist": [
+    "...",
+    "..."
+  ],
+  "top_stories": [
+    {{
+      "title": "...",
+      "why_it_matters": "...",
+      "decision_relevance": "..."
+    }}
+  ]
+}}
+
+Rules:
+- executive_summary should be concise and analytical.
+- key_signal should describe the strongest trend or signal emerging today.
+- recommended_focus should explain what decision-makers should monitor closely.
+- decision_implications should explain possible strategic or operational implications.
+- watchlist should contain concrete developments, risks, markets, technologies, or policies worth monitoring.
+- Include maximum 5 top_stories.
+- why_it_matters should explain the broader significance.
+- decision_relevance should explain why the story matters for strategic decision-making.
+- Do not give financial or investment advice.
+- Do not invent facts not supported by the articles.
+- Focus on signals, momentum, partnerships, policy shifts, infrastructure, scaling, regulation, and market direction.
+
+Articles:
+{articles_json}
+""".strip()
