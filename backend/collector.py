@@ -5,7 +5,6 @@ import logging
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Set
-from urllib.parse import urlparse
 
 from rss_collector import fetch_rss_articles
 
@@ -24,7 +23,6 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-# Create unique article ID
 def make_article_id(
     url: str,
     title: str,
@@ -41,51 +39,6 @@ def make_article_id(
         base = f"{title.strip().lower()}|{(source or '').strip().lower()}|{(published_at or '').strip()}"
     return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
-def get_domain(url: str) -> str:
-    """
-    Extract normalized domain from an article URL.
-    """
-    if not url:
-        return ""
-
-    return urlparse(url).netloc.lower().removeprefix("www.")
-
-
-def is_excluded_domain(domain: str) -> bool:
-    """
-    Return True if the article domain is blocked directly or as a subdomain.
-    """
-    return any(
-        domain == blocked_domain or domain.endswith(f".{blocked_domain}")
-        for blocked_domain in EXCLUDED_SOURCE_DOMAINS
-    )
-
-
-def filter_excluded_sources(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Remove articles from domains that are known to be irrelevant.
-    """
-    kept_articles = []
-    excluded_count = 0
-
-    for article in articles:
-        domain = get_domain(article.get("url", ""))
-
-        if is_excluded_domain(domain):
-            excluded_count += 1
-            continue
-
-        kept_articles.append(article)
-
-    logger.info(
-        "Excluded %s articles from blocked domains: %s",
-        excluded_count,
-        sorted(EXCLUDED_SOURCE_DOMAINS),
-    )
-
-    return kept_articles
-
-# Create data table
 def init_raw_articles_table() -> None:
     """
     Create the raw_articles table if it does not already exist.
@@ -115,10 +68,10 @@ def init_raw_articles_table() -> None:
     conn.commit()
     conn.close()
 
-# Fetch articles from NewsAPI
 def fetch_articles(days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]]:
     """
     Request articles from NewsAPI using the configured query and date range.
+    Excludes blocked source domains directly in the NewsAPI request.
     """
     if not NEWSAPI_API_KEY:
         raise ValueError("NEWSAPI_API_KEY is missing")
@@ -126,6 +79,7 @@ def fetch_articles(days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]]:
     params = {
         "q": COLLECTION_PROFILE["query"],
         "from": get_from_date(days_back),
+        "excludeDomains": ",".join(sorted(EXCLUDED_SOURCE_DOMAINS)),
         **COLLECTION_PROFILE["base_params"],
     }
 
@@ -154,7 +108,6 @@ def fetch_articles(days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]]:
 
     return data.get("articles", [])
 
-# Normalize article structure
 def normalize_article(article: Dict[str, Any]) -> Dict[str, Any]:
     """
     Convert the raw API response into a consistent internal article structure.
@@ -188,7 +141,6 @@ def normalize_article(article: Dict[str, Any]) -> Dict[str, Any]:
         "raw": article,
     }
 
-# Deduplicate articles within the current batch
 def deduplicate_articles(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Remove duplicate articles within the current fetched batch.
@@ -204,7 +156,6 @@ def deduplicate_articles(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]
 
     return unique
 
-# Get existing article IDs from the database
 def get_existing_article_ids(article_ids: List[str]) -> Set[str]:
     """
     Return the subset of article_ids that already exist in raw_articles.
@@ -228,7 +179,6 @@ def get_existing_article_ids(article_ids: List[str]) -> Set[str]:
 
     return {row[0] for row in rows}
 
-# Filter out articles already stored
 def filter_new_articles(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Keep only articles that are not already stored in the database.
@@ -250,7 +200,6 @@ def filter_new_articles(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
     return new_articles
 
-# Save the new articles
 def save_raw_articles(articles: List[Dict[str, Any]]) -> None:
     """
     Save new raw articles to the database.
@@ -295,7 +244,6 @@ def save_raw_articles(articles: List[Dict[str, Any]]) -> None:
     conn.commit()
     conn.close()
 
-# Full collection pipeline
 def collect_articles(days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]]:
     """
     Run the full collection step:
@@ -315,9 +263,8 @@ def collect_articles(days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]
     logger.info("Fetched %s RSS articles", len(rss_articles))
 
     normalized_articles = newsapi_articles + rss_articles
-    filtered_articles = filter_excluded_sources(normalized_articles)
 
-    unique_articles = deduplicate_articles(filtered_articles)
+    unique_articles = deduplicate_articles(normalized_articles)
     logger.info("Unique within fetched batch: %s", len(unique_articles))
 
     new_articles = filter_new_articles(unique_articles)
@@ -330,7 +277,6 @@ def collect_articles(days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]
 
     return new_articles
 
-# Simple test run for debugging and validation
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
