@@ -1,3 +1,4 @@
+# monitoring_app.py
 import pandas as pd
 import requests
 import streamlit as st
@@ -48,13 +49,11 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     st.sidebar.header("Monitoring Filters")
 
     status_options = sorted(df["overall_status"].dropna().unique().tolist()) if not df.empty else []
-    relevance_options = sorted(df["relevance_judgment"].dropna().unique().tolist()) if not df.empty else []
     label_judgment_options = sorted(df["label_judgment"].dropna().unique().tolist()) if not df.empty else []
     predicted_label_options = sorted(df["predicted_label"].dropna().unique().tolist()) if not df.empty else []
     source_options = sorted(df["source"].dropna().unique().tolist()) if not df.empty else []
 
     selected_status = st.sidebar.multiselect("Overall status", status_options, default=status_options)
-    selected_relevance = st.sidebar.multiselect("Relevance judgment", relevance_options, default=relevance_options)
     selected_label_judgment = st.sidebar.multiselect("Label judgment", label_judgment_options, default=label_judgment_options)
     selected_predicted_labels = st.sidebar.multiselect("Predicted labels", predicted_label_options, default=[])
     selected_sources = st.sidebar.multiselect("Sources", source_options, default=[])
@@ -79,9 +78,6 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
 
     if selected_status:
         filtered = filtered[filtered["overall_status"].isin(selected_status)]
-
-    if selected_relevance:
-        filtered = filtered[filtered["relevance_judgment"].isin(selected_relevance)]
 
     if selected_label_judgment:
         filtered = filtered[filtered["label_judgment"].isin(selected_label_judgment)]
@@ -128,10 +124,6 @@ def render_summary(summary: dict, df: pd.DataFrame) -> None:
     st.markdown("#### Monitoring status distribution")
     status_df = df["overall_status"].value_counts().rename_axis("overall_status").reset_index(name="count")
     st.bar_chart(status_df.set_index("overall_status"))
-
-    st.markdown("#### Relevance judgment distribution")
-    rel_df = df["relevance_judgment"].value_counts().rename_axis("relevance_judgment").reset_index(name="count")
-    st.bar_chart(rel_df.set_index("relevance_judgment"))
 
     st.markdown("#### Label judgment distribution")
     label_df = df["label_judgment"].value_counts().rename_axis("label_judgment").reset_index(name="count")
@@ -200,12 +192,8 @@ def render_review_queue(df: pd.DataFrame) -> None:
             st.write(row["description"] if pd.notnull(row["description"]) else "No description")
 
             st.markdown("**Judge output**")
-            c1, c2 = st.columns(2)
-            c1.markdown(f"**Relevance:** {row['relevance_judgment']} ({row['relevance_confidence']})")
-            c1.write(row["relevance_explanation"])
-
-            c2.markdown(f"**Label quality:** {row['label_judgment']} ({row['label_confidence']})")
-            c2.write(row["label_explanation"])
+            st.markdown(f"**Label quality:** {row['label_judgment']} ({row['label_confidence']})")
+            st.write(row["label_explanation"])
 
             st.markdown("**Metadata**")
             st.caption(f"Article ID: {row['article_id']}")
@@ -227,8 +215,6 @@ def render_full_table(df: pd.DataFrame) -> None:
             "published_at",
             "source",
             "predicted_label",
-            "relevance_judgment",
-            "relevance_confidence",
             "label_judgment",
             "label_confidence",
             "overall_status",
@@ -245,8 +231,7 @@ def main() -> None:
     st.title("🛠️ Monitoring Dashboard")
     st.write(
         "This dashboard helps inspect LLM-as-a-judge monitoring output in order to identify "
-        "collection issues, classification issues, and low-confidence cases that may require "
-        "pipeline improvements."
+        "label accuracy issues and low-confidence cases that may require pipeline improvements."
     )
 
     try:

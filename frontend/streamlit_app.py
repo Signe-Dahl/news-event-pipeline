@@ -1,4 +1,6 @@
-# streamlit_app.py
+# frontend/streamlit_app.py
+import json
+
 import pandas as pd
 import requests
 import streamlit as st
@@ -40,6 +42,17 @@ def load_classified_articles() -> pd.DataFrame:
     except Exception as e:
         st.error(f"Failed to load articles from API: {e}")
         return pd.DataFrame()
+
+
+@st.cache_data(ttl=300)
+def load_daily_summary() -> dict:
+    try:
+        response = requests.get(f"{API_BASE_URL}/summary/daily", timeout=30)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        st.error(f"Failed to load daily summary: {e}")
+        return {}
 
 
 def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
@@ -99,36 +112,118 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     return filtered
 
 
-def render_overview(df: pd.DataFrame) -> None:
-    st.subheader("Overview")
+def find_matching_article(title: str, articles_df: pd.DataFrame):
+    """
+    Match a top-story title from the daily summary to the classified articles.
+    This is used to fill missing fields such as label, source, URL, and published date.
+    """
+    if articles_df.empty or not title:
+        return None
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Articles shown", len(df))
-    c2.metric("Unique action categories", df["label"].nunique() if not df.empty else 0)
-    c3.metric("Unique sources", df["source"].nunique() if not df.empty else 0)
+    normalized_title = title.strip().lower()
 
-    if df.empty:
-        st.info("No classified articles match the current filters.")
+    matches = articles_df[
+        articles_df["title"].fillna("").str.strip().str.lower() == normalized_title
+    ]
+
+    if not matches.empty:
+        return matches.iloc[0]
+
+    partial_matches = articles_df[
+        articles_df["title"].fillna("").str.lower().str.contains(normalized_title, na=False)
+    ]
+
+    if not partial_matches.empty:
+        return partial_matches.iloc[0]
+
+    return None
+
+
+def render_daily_summary(summary: dict, articles_df: pd.DataFrame) -> None:
+    st.subheader("Daily AI Summary")
+
+    if not summary:
+        st.info("No daily summary available yet.")
         return
 
-    daily_counts = (
-        df.groupby(["published_day", "label"])
-        .size()
-        .reset_index(name="count")
-        .sort_values(["published_day", "label"])
-    )
+    st.caption(f"Summary date: {summary.get('summary_date', 'Unknown')}")
 
-    st.markdown("#### Actions by day")
-    chart_df = (
-        daily_counts.pivot(index="published_day", columns="label", values="count")
-        .fillna(0)
-        .sort_index()
-    )
-    st.line_chart(chart_df)
+    st.markdown("### Executive Summary")
+    st.write(summary.get("short_summary", "No summary available."))
 
-    st.markdown("#### Category distribution")
-    dist_df = df["label"].value_counts().rename_axis("label").reset_index(name="count")
-    st.bar_chart(dist_df.set_index("label"))
+    st.markdown("### Recommended Focus")
+    st.write(summary.get("key_focus", "No focus available."))
+
+    top_stories = summary.get("top_stories")
+
+    if isinstance(top_stories, str):
+        try:
+            top_stories = json.loads(top_stories)
+        except Exception:
+            top_stories = None
+
+    if not isinstance(top_stories, dict):
+        return
+
+    stories = top_stories.get("top_stories", [])
+
+    if not stories:
+        return
+
+    st.markdown("### Top Stories")
+
+    for story in stories:
+        title = story.get("title", "Untitled story")
+        matched_article = find_matching_article(title, articles_df)
+
+        label = (
+            story.get("label")
+            or story.get("category")
+            or (matched_article["label"] if matched_article is not None else "Unknown")
+        )
+
+        source = (
+            story.get("source")
+            or (matched_article["source"] if matched_article is not None else "Unknown source")
+        )
+
+        published_at = story.get("published_at")
+
+        if not published_at and matched_article is not None:
+            published_at = matched_article["published_at"]
+
+        if pd.notnull(published_at):
+            published_at = pd.to_datetime(published_at).strftime("%Y-%m-%d %H:%M UTC")
+        else:
+            published_at = "Unknown date"
+
+        description = (
+            story.get("description")
+            or (matched_article["description"] if matched_article is not None else "")
+        )
+
+        reason = story.get("reason") or story.get("importance") or ""
+
+        url = story.get("url") or (
+            matched_article["url"] if matched_article is not None else None
+        )
+
+        with st.expander(title):
+            c1, c2, c3 = st.columns(3)
+            c1.markdown(f"**Category:** {label}")
+            c2.markdown(f"**Source:** {source}")
+            c3.markdown(f"**Published:** {published_at}")
+
+            if description:
+                st.markdown("**Description**")
+                st.write(description)
+
+            if reason:
+                st.markdown("**Why this matters**")
+                st.write(reason)
+
+            if url:
+                st.markdown(f"[Open article]({url})")
 
 
 def render_article_browser(df: pd.DataFrame) -> None:
@@ -198,6 +293,7 @@ def main() -> None:
     )
 
     df = load_classified_articles()
+    summary = load_daily_summary()
 
     if df.empty:
         st.warning("No classified articles found yet. Check whether the API is live and returning data.")
@@ -205,10 +301,10 @@ def main() -> None:
 
     filtered_df = apply_filters(df)
 
-    tab1, tab2 = st.tabs(["Overview", "Articles"])
+    tab1, tab2 = st.tabs(["Daily Summary", "Articles"])
 
     with tab1:
-        render_overview(filtered_df)
+        render_daily_summary(summary, df)
 
     with tab2:
         render_article_browser(filtered_df)
