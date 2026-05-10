@@ -20,6 +20,11 @@ DATE_LOOKBACK_DAYS = 2 # set to 2 due to the API free tier having a 24 hour arti
 DEFAULT_LANGUAGE = "en"
 DEFAULT_LIMIT = 100
 
+# Source filtering
+EXCLUDED_SOURCE_DOMAINS = {
+    "slickdeals.net",
+}
+
 def get_from_date(days_back: int = DATE_LOOKBACK_DAYS) -> str:
     dt = datetime.now(timezone.utc) - timedelta(days=days_back)
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
