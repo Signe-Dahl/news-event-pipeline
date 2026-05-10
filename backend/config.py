@@ -20,6 +20,11 @@ DATE_LOOKBACK_DAYS = 2 # set to 2 due to the API free tier having a 24 hour arti
 DEFAULT_LANGUAGE = "en"
 DEFAULT_LIMIT = 100
 
+# Source filtering
+EXCLUDED_SOURCE_DOMAINS = {
+    "slickdeals.net",
+}
+
 def get_from_date(days_back: int = DATE_LOOKBACK_DAYS) -> str:
     dt = datetime.now(timezone.utc) - timedelta(days=days_back)
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -65,13 +70,14 @@ ACTION_CATEGORIES = [
 ]
 
 CLASSIFICATION_SYSTEM_PROMPT = f"""
-You are a news event classifier for green energy and climate technology news.
+You are a news event classifier for European green energy and climate technology news.
 Classify each article into exactly one of these categories:
 
 {", ".join(ACTION_CATEGORIES)}
 
 Rules:
 - If the article is NOT primarily about green energy, climate technology, decarbonization, or sustainability, you MUST classify it as "not relevant to field".
+- If the article has no clear relevance to Europe, the EU, or a European country, classify it as "not relevant to field".
 - Only choose another category if the article clearly relates to green energy or climate technology.
 - If relevance is weak, indirect, or ambiguous, classify it as "not relevant to field".
 - Always return exactly one category label and nothing else.

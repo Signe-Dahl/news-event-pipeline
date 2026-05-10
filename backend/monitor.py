@@ -1,4 +1,4 @@
-# monitor.py
+# backend/monitor.py
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,13 +24,10 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-# Initialize Groq client using API key from environment
 client = Groq()
 
-# Judge model used for automated evaluation
 JUDGE_MODEL_NAME = MONITOR_MODEL_NAME
 
-# Strict schema for structured LLM judge output
 MONITOR_RESPONSE_SCHEMA = {
     "type": "json_schema",
     "json_schema": {
@@ -60,6 +57,67 @@ MONITOR_RESPONSE_SCHEMA = {
         },
     },
 }
+
+
+FEW_SHOT_MONITOR_EXAMPLES = [
+    {
+        "title": "Copenhagen Infrastructure Partners divests ownership of Summerfield Battery to Palisade Investment Partners",
+        "description": "Summerfield Battery Energy Storage System is a 240 MW / 960 MWh late-stage construction project in South Australia.",
+        "predicted_label": "funding/investment",
+        "label_judgment": "correct",
+        "label_confidence": "high",
+        "label_explanation": "The article is about ownership and investment in a battery energy storage project.",
+    },
+    {
+        "title": "Toyota joins hydrogen truck alliance push",
+        "description": "Toyota teams up with Daimler Truck and Volvo Group to scale hydrogen fuel-cell technology for heavy-duty trucks.",
+        "predicted_label": "partnership",
+        "label_judgment": "correct",
+        "label_confidence": "high",
+        "label_explanation": "The article describes a partnership related to hydrogen transport technology.",
+    },
+    {
+        "title": "[Lightning Deal] EF ECOFLOW River 3 Plus Portable Power Station at Amazon",
+        "description": "A shopping deal for a portable power station and extra battery sold through Amazon.",
+        "predicted_label": "market/finance",
+        "label_judgment": "incorrect",
+        "label_confidence": "high",
+        "label_explanation": "Consumer shopping deals are not green energy or climate technology news.",
+    },
+    {
+        "title": "iPhone 18 Pro Max Rumors: Massive Battery, Variable Aperture Camera and 2nm Chip",
+        "description": "Apple's next phone is rumored to include a larger battery, improved camera, and new processor.",
+        "predicted_label": "other",
+        "label_judgment": "incorrect",
+        "label_confidence": "high",
+        "label_explanation": "Consumer electronics battery rumors are not green energy or climate technology news.",
+    },
+]
+
+
+def format_few_shot_examples() -> str:
+    """
+    Format curated few-shot examples for the monitoring judge prompt.
+    """
+    examples = []
+
+    for i, example in enumerate(FEW_SHOT_MONITOR_EXAMPLES, start=1):
+        examples.append(f"""
+Example {i}
+
+Article title: {example["title"]}
+Article description: {example["description"]}
+Predicted label: {example["predicted_label"]}
+
+Correct judge output:
+{{
+  "label_judgment": "{example["label_judgment"]}",
+  "label_confidence": "{example["label_confidence"]}",
+  "label_explanation": "{example["label_explanation"]}"
+}}
+""".strip())
+
+    return "\n\n".join(examples)
 
 
 def init_monitoring_table() -> None:
@@ -159,7 +217,6 @@ def fetch_already_monitored_article_ids() -> set[str]:
 def filter_unmonitored_articles(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Keep only articles that do not yet have monitoring results.
-    This allows failed evaluations to be retried in later runs.
     """
     monitored_ids = fetch_already_monitored_article_ids()
     new_articles = [a for a in articles if a["article_id"] not in monitored_ids]
@@ -184,6 +241,8 @@ def build_monitor_prompt(article: Dict[str, Any]) -> str:
     description = article.get("description", "")
     predicted_label = article.get("label", "")
 
+    few_shot_examples = format_few_shot_examples()
+
     return f"""
 Evaluate this classified news article.
 
@@ -192,14 +251,23 @@ Domain: green energy and climate technology.
 Allowed pipeline labels:
 {categories}
 
+Use the examples below as guidance for how strict the evaluation should be.
+
+Few-shot examples:
+{few_shot_examples}
+
+Now evaluate the new article.
+
 Article title: {title}
 Article description: {description}
 Predicted label: {predicted_label}
 
 Judge only whether the predicted label is appropriate.
 
-Important rule:
-If the predicted label is "{NOT_RELEVANT_LABEL}" and the article is not actually about green energy or climate technology, then the classifier is correct.
+Important rules:
+- If the article is not primarily about green energy, climate technology, decarbonization, renewable energy infrastructure, clean energy policy, or climate-relevant industrial technology, then labels such as "market/finance", "other", or "new product" are not appropriate.
+- Consumer shopping deals, phone battery rumors, power tool battery deals, generic electronics, and unrelated product discounts should usually be judged incorrect unless they are classified as "{NOT_RELEVANT_LABEL}".
+- If the predicted label is "{NOT_RELEVANT_LABEL}" and the article is not actually about green energy or climate technology, then the classifier is correct.
 
 Label judgment rules:
 - If the predicted label is appropriate, label_judgment should be "correct".
@@ -285,7 +353,7 @@ def judge_single_article(article: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             parsed = parse_judge_response(raw_response)
 
             predicted_label = article.get("label", "")
-            
+
             parsed["overall_status"] = derive_overall_status(parsed, predicted_label)
             parsed["requires_human_review"] = requires_human_review(parsed, predicted_label)
             parsed["judge_model"] = JUDGE_MODEL_NAME
@@ -429,7 +497,7 @@ def run_monitoring(limit: Optional[int] = None) -> List[Dict[str, Any]]:
 
     return monitored_results
 
-# Run monitoring directly for debugging or manual execution
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     run_monitoring()
