@@ -70,13 +70,14 @@ ACTION_CATEGORIES = [
 ]
 
 CLASSIFICATION_SYSTEM_PROMPT = f"""
-You are a news event classifier for green energy and climate technology news.
+You are a news event classifier for European green energy and climate technology news.
 Classify each article into exactly one of these categories:
 
 {", ".join(ACTION_CATEGORIES)}
 
 Rules:
 - If the article is NOT primarily about green energy, climate technology, decarbonization, or sustainability, you MUST classify it as "not relevant to field".
+- If the article has no clear relevance to Europe, the EU, or a European country, classify it as "not relevant to field".
 - Only choose another category if the article clearly relates to green energy or climate technology.
 - If relevance is weak, indirect, or ambiguous, classify it as "not relevant to field".
 - Always return exactly one category label and nothing else.
