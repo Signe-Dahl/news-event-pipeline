@@ -1,10 +1,11 @@
-# collector.py
+# backend/collector.py
 import hashlib
 import json
 import logging
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Set
+from rss_collector import fetch_rss_articles
 
 import requests
 
@@ -259,9 +260,14 @@ def collect_articles(days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]
     init_raw_articles_table()
 
     raw_articles = fetch_articles(days_back=days_back)
-    logger.info("Fetched %s raw articles", len(raw_articles))
+    logger.info("Fetched %s NewsAPI raw articles", len(raw_articles))
 
-    normalized_articles = [normalize_article(article) for article in raw_articles]
+    newsapi_articles = [normalize_article(article) for article in raw_articles]
+
+    rss_articles = fetch_rss_articles()
+    logger.info("Fetched %s RSS articles", len(rss_articles))
+
+    normalized_articles = newsapi_articles + rss_articles
     unique_articles = deduplicate_articles(normalized_articles)
     logger.info("Unique within fetched batch: %s", len(unique_articles))
 
