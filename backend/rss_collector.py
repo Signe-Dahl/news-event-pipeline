@@ -6,7 +6,8 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List
 from datetime import datetime, timezone, timedelta
 from config import COLLECTION_PROFILE, REQUEST_TIMEOUT, DATE_LOOKBACK_DAYS
-
+import html
+import re
 import requests
 
 from config import COLLECTION_PROFILE, REQUEST_TIMEOUT
@@ -57,12 +58,22 @@ def is_within_lookback(published_at: str, days_back: int = DATE_LOOKBACK_DAYS) -
     cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
     return published_dt >= cutoff
 
+def clean_html_text(value: str) -> str:
+    if not value:
+        return ""
+
+    value = html.unescape(value)
+    value = re.sub(r"<[^>]+>", " ", value)
+    value = re.sub(r"\s+", " ", value)
+
+    return value.strip()
+
 def normalize_rss_article(
     item: ET.Element,
     feed: Dict[str, str],
 ) -> Dict[str, Any]:
     title = (item.findtext("title") or "").strip()
-    description = (item.findtext("description") or "").strip()
+    description = clean_html_text(item.findtext("description") or "")
     url = (item.findtext("link") or "").strip()
     published_at = parse_rss_date(item.findtext("pubDate") or "")
 
