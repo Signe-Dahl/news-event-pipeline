@@ -4,7 +4,10 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List
-
+from datetime import datetime, timezone, timedelta
+from config import COLLECTION_PROFILE, REQUEST_TIMEOUT, DATE_LOOKBACK_DAYS
+import html
+import re
 import requests
 
 from config import COLLECTION_PROFILE, REQUEST_TIMEOUT
@@ -43,13 +46,34 @@ def parse_rss_date(value: str) -> str:
     except Exception:
         return value
 
+def is_within_lookback(published_at: str, days_back: int = DATE_LOOKBACK_DAYS) -> bool:
+    if not published_at:
+        return False
+
+    try:
+        published_dt = datetime.fromisoformat(published_at)
+    except ValueError:
+        return False
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
+    return published_dt >= cutoff
+
+def clean_html_text(value: str) -> str:
+    if not value:
+        return ""
+
+    value = html.unescape(value)
+    value = re.sub(r"<[^>]+>", " ", value)
+    value = re.sub(r"\s+", " ", value)
+
+    return value.strip()
 
 def normalize_rss_article(
     item: ET.Element,
     feed: Dict[str, str],
 ) -> Dict[str, Any]:
     title = (item.findtext("title") or "").strip()
-    description = (item.findtext("description") or "").strip()
+    description = clean_html_text(item.findtext("description") or "")
     url = (item.findtext("link") or "").strip()
     published_at = parse_rss_date(item.findtext("pubDate") or "")
 
@@ -89,7 +113,7 @@ def normalize_rss_article(
     }
 
 
-def fetch_rss_feed(feed: Dict[str, str]) -> List[Dict[str, Any]]:
+def fetch_rss_feed(feed: Dict[str, str], days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]]:
     response = requests.get(feed["url"], timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
 
@@ -97,16 +121,19 @@ def fetch_rss_feed(feed: Dict[str, str]) -> List[Dict[str, Any]]:
 
     articles = []
     for item in root.findall(".//item"):
-        articles.append(normalize_rss_article(item, feed))
+        article = normalize_rss_article(item, feed)
+
+        if is_within_lookback(article["published_at"], days_back):
+            articles.append(article)
 
     return articles
 
 
-def fetch_rss_articles() -> List[Dict[str, Any]]:
+def fetch_rss_articles(days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]]:
     articles = []
 
     for feed in RSS_FEEDS:
-        articles.extend(fetch_rss_feed(feed))
+        articles.extend(fetch_rss_feed(feed, days_back=days_back))
 
     return articles
 
