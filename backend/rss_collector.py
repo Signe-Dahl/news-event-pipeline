@@ -4,6 +4,8 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List
+from datetime import datetime, timezone, timedelta
+from config import COLLECTION_PROFILE, REQUEST_TIMEOUT, DATE_LOOKBACK_DAYS
 
 import requests
 
@@ -43,6 +45,17 @@ def parse_rss_date(value: str) -> str:
     except Exception:
         return value
 
+def is_within_lookback(published_at: str, days_back: int = DATE_LOOKBACK_DAYS) -> bool:
+    if not published_at:
+        return False
+
+    try:
+        published_dt = datetime.fromisoformat(published_at)
+    except ValueError:
+        return False
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
+    return published_dt >= cutoff
 
 def normalize_rss_article(
     item: ET.Element,
@@ -89,7 +102,7 @@ def normalize_rss_article(
     }
 
 
-def fetch_rss_feed(feed: Dict[str, str]) -> List[Dict[str, Any]]:
+def fetch_rss_feed(feed: Dict[str, str], days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]]:
     response = requests.get(feed["url"], timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
 
@@ -97,16 +110,19 @@ def fetch_rss_feed(feed: Dict[str, str]) -> List[Dict[str, Any]]:
 
     articles = []
     for item in root.findall(".//item"):
-        articles.append(normalize_rss_article(item, feed))
+        article = normalize_rss_article(item, feed)
+
+        if is_within_lookback(article["published_at"], days_back):
+            articles.append(article)
 
     return articles
 
 
-def fetch_rss_articles() -> List[Dict[str, Any]]:
+def fetch_rss_articles(days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]]:
     articles = []
 
     for feed in RSS_FEEDS:
-        articles.extend(fetch_rss_feed(feed))
+        articles.extend(fetch_rss_feed(feed, days_back=days_back))
 
     return articles
 

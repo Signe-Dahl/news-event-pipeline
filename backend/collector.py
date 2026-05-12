@@ -259,7 +259,7 @@ def collect_articles(days_back: int = DATE_LOOKBACK_DAYS) -> List[Dict[str, Any]
 
     newsapi_articles = [normalize_article(article) for article in raw_articles]
 
-    rss_articles = fetch_rss_articles()
+    rss_articles = fetch_rss_articles(days_back=days_back)
     logger.info("Fetched %s RSS articles", len(rss_articles))
 
     normalized_articles = newsapi_articles + rss_articles
