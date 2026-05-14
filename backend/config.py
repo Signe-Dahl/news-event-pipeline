@@ -122,7 +122,12 @@ Return ONLY valid JSON with this exact structure:
   ],
   "top_stories": [
     {{
+      "article_id": "...",
       "title": "...",
+      "label": "...",
+      "source": "...",
+      "url": "...",
+      "published_at": "...",
       "why_it_matters": "...",
       "decision_relevance": "..."
     }}
@@ -130,6 +135,9 @@ Return ONLY valid JSON with this exact structure:
 }}
 
 Rules:
+- For every top_story, copy article_id, title, label, source, url, and published_at exactly from the input article.
+- Do not shorten, rewrite, summarize, or invent titles.
+- article_id must be copied exactly from the selected input article.
 - executive_summary should be concise and analytical.
 - key_signal should describe the strongest trend or signal emerging today.
 - recommended_focus should explain what decision-makers should monitor closely.

@@ -1,5 +1,6 @@
 # frontend/streamlit_app.py
 import json
+import os
 
 import pandas as pd
 import requests
@@ -12,8 +13,19 @@ st.set_page_config(
     layout="wide",
 )
 
-API_BASE_URL = "https://Signe22-Article-Data-API.hf.space"
+API_BASE_URL = st.secrets.get(
+    "API_BASE_URL",
+    os.getenv("API_BASE_URL", "https://Signe22-Article-Data-API.hf.space"),
+)
 
+def ensure_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    df = df.copy()
+
+    for column in columns:
+        if column not in df.columns:
+            df[column] = None
+
+    return df
 
 @st.cache_data(ttl=300)
 def load_classified_articles() -> pd.DataFrame:
@@ -31,16 +43,39 @@ def load_classified_articles() -> pd.DataFrame:
         if df.empty:
             return df
 
-        df["published_at"] = pd.to_datetime(df["published_at"], errors="coerce", utc=True)
-        df["classified_at"] = pd.to_datetime(df["classified_at"], errors="coerce", utc=True)
+        df = ensure_columns(
+            df,
+            [
+                "article_id",
+                "title",
+                "description",
+                "source",
+                "label",
+                "raw_label",
+                "url",
+                "published_at",
+                "classified_at",
+            ],
+        )
+
+        df["published_at"] = pd.to_datetime(
+            df["published_at"],
+            errors="coerce",
+            utc=True,
+        )
+        df["classified_at"] = pd.to_datetime(
+            df["classified_at"],
+            errors="coerce",
+            utc=True,
+        )
 
         df["published_date"] = df["published_at"].dt.date
         df["published_day"] = df["published_at"].dt.strftime("%Y-%m-%d")
 
         return df
 
-    except Exception as e:
-        st.error(f"Failed to load articles from API: {e}")
+    except Exception as error:
+        st.error(f"Failed to load articles from API: {error}")
         return pd.DataFrame()
 
 
@@ -49,22 +84,79 @@ def load_daily_summary() -> dict:
     try:
         response = requests.get(f"{API_BASE_URL}/summary/daily", timeout=30)
         response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        st.error(f"Failed to load daily summary: {e}")
+        summary = response.json()
+
+        if not isinstance(summary, dict):
+            return {}
+
+        return normalize_summary_payload(summary)
+
+    except Exception as error:
+        st.error(f"Failed to load daily summary: {error}")
         return {}
 
+
+def normalize_summary_payload(summary: dict) -> dict:
+    normalized = dict(summary)
+
+    nested_summary = summary.get("summary_json")
+
+    if isinstance(nested_summary, str):
+        try:
+            parsed = json.loads(nested_summary)
+            if isinstance(parsed, dict):
+                normalized.update(parsed)
+        except Exception:
+            pass
+
+    elif isinstance(nested_summary, dict):
+        normalized.update(nested_summary)
+
+    normalized["executive_summary"] = (
+        normalized.get("executive_summary")
+        or normalized.get("short_summary")
+        or ""
+    )
+
+    normalized["recommended_focus"] = (
+        normalized.get("recommended_focus")
+        or normalized.get("key_focus")
+        or ""
+    )
+
+    if not isinstance(normalized.get("decision_implications"), list):
+        normalized["decision_implications"] = []
+
+    if not isinstance(normalized.get("watchlist"), list):
+        normalized["watchlist"] = []
+
+    if not isinstance(normalized.get("top_stories"), list):
+        normalized["top_stories"] = []
+
+    return normalized
+
+def is_valid_url(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+
+    return value.startswith(("http://", "https://"))
 
 def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     st.sidebar.header("Filters")
 
-    label_options = sorted(df["label"].dropna().unique().tolist()) if not df.empty else []
-    source_options = sorted(df["source"].dropna().unique().tolist()) if not df.empty else []
+    label_options = sorted(df["label"].dropna().unique().tolist())
+    source_options = sorted(df["source"].dropna().unique().tolist())
+
+    default_labels = [
+        label
+        for label in label_options
+        if label != "not relevant to field"
+    ]
 
     selected_labels = st.sidebar.multiselect(
         "Action categories",
         options=label_options,
-        default=label_options,
+        default=default_labels,
     )
 
     selected_sources = st.sidebar.multiselect(
@@ -103,110 +195,172 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
         ]
 
     if search_term:
-        search_term = search_term.lower().strip()
-        filtered = filtered[
-            filtered["title"].fillna("").str.lower().str.contains(search_term, na=False)
-            | filtered["description"].fillna("").str.lower().str.contains(search_term, na=False)
-        ]
+        search_term = search_term.strip()
+
+        title_matches = filtered["title"].fillna("").str.contains(
+            search_term,
+            case=False,
+            na=False,
+            regex=False,
+        )
+
+        description_matches = filtered["description"].fillna("").str.contains(
+            search_term,
+            case=False,
+            na=False,
+            regex=False,
+        )
+
+        filtered = filtered[title_matches | description_matches]
 
     return filtered
 
 
-def find_matching_article(title: str, articles_df: pd.DataFrame):
-    """
-    Match a top-story title from the daily summary to the classified articles.
-    This is used to fill missing fields such as label, source, URL, and published date.
-    """
-    if articles_df.empty or not title:
-        return None
+def render_metrics(df: pd.DataFrame, filtered_df: pd.DataFrame) -> None:
+    c1, c2, c3, c4 = st.columns(4)
 
-    normalized_title = title.strip().lower()
-
-    matches = articles_df[
-        articles_df["title"].fillna("").str.strip().str.lower() == normalized_title
-    ]
-
-    if not matches.empty:
-        return matches.iloc[0]
-
-    partial_matches = articles_df[
-        articles_df["title"].fillna("").str.lower().str.contains(normalized_title, na=False)
-    ]
-
-    if not partial_matches.empty:
-        return partial_matches.iloc[0]
-
-    return None
+    c1.metric("Articles", len(df))
+    c2.metric("Shown", len(filtered_df))
+    c3.metric("Sources", df["source"].nunique())
+    c4.metric("Categories", df["label"].nunique())
 
 
-def render_daily_summary(summary: dict, articles_df: pd.DataFrame) -> None:
+def render_bullet_list(items: list[str], empty_message: str) -> None:
+    if not items:
+        st.info(empty_message)
+        return
+
+    for item in items:
+        st.markdown(f"- {item}")
+
+def get_summary_source_articles(
+    df: pd.DataFrame,
+    summary: dict,
+    fallback_limit: int = 15,
+) -> pd.DataFrame:
+    stories = summary.get("top_stories", [])
+
+    story_ids = {
+        str(story.get("article_id"))
+        for story in stories
+        if isinstance(story, dict) and story.get("article_id")
+    }
+
+    if story_ids:
+        matched_df = df[df["article_id"].astype(str).isin(story_ids)]
+
+        if not matched_df.empty:
+            return matched_df
+
+    relevant_df = df[df["label"] != "not relevant to field"].copy()
+
+    if "published_at" in relevant_df:
+        relevant_df = relevant_df.sort_values("published_at", ascending=False)
+
+    return relevant_df.head(fallback_limit)
+
+
+def render_daily_summary_source_basis(
+    df: pd.DataFrame,
+    summary: dict,
+) -> pd.DataFrame:
+    summary_df = get_summary_source_articles(df, summary)
+
+    generated_at = summary.get("generated_at")
+    top_story_count = len(summary.get("top_stories", []))
+
+    formatted_generated_at = None
+
+    if generated_at:
+        parsed = pd.to_datetime(generated_at, errors="coerce", utc=True)
+
+        if pd.notnull(parsed):
+            formatted_generated_at = parsed.strftime("%Y-%m-%d %H:%M UTC")
+
+    if formatted_generated_at:
+        st.caption(
+            f"Summary generated {formatted_generated_at} · "
+            f"{top_story_count} top stories included"
+        )
+    else:
+        st.caption(
+            f"{top_story_count} top stories included in this summary"
+        )
+
+    return summary_df
+
+
+def render_daily_summary(summary: dict) -> None:
     st.subheader("Daily AI Summary")
 
     if not summary:
         st.info("No daily summary available yet.")
         return
 
-    st.caption(f"Summary date: {summary.get('summary_date', 'Unknown')}")
+    summary_date = summary.get("summary_date", "Unknown")
+    generated_at = summary.get("generated_at")
+
+    if generated_at:
+        st.caption(f"Summary date: {summary_date} · Generated at: {generated_at}")
+    else:
+        st.caption(f"Summary date: {summary_date}")
 
     st.markdown("### Executive Summary")
-    st.write(summary.get("short_summary", "No summary available."))
+    st.write(summary.get("executive_summary") or "No summary available.")
+
+    st.markdown("### Key Signal")
+    st.write(summary.get("key_signal") or "No key signal available.")
 
     st.markdown("### Recommended Focus")
-    st.write(summary.get("key_focus", "No focus available."))
+    st.write(summary.get("recommended_focus") or "No focus available.")
 
-    top_stories = summary.get("top_stories")
+    st.markdown("### Decision Implications")
+    render_bullet_list(
+        summary.get("decision_implications", []),
+        "No decision implications available.",
+    )
 
-    if isinstance(top_stories, str):
-        try:
-            top_stories = json.loads(top_stories)
-        except Exception:
-            top_stories = None
+    st.markdown("### Watchlist")
+    render_bullet_list(
+        summary.get("watchlist", []),
+        "No watchlist available.",
+    )
 
-    if not isinstance(top_stories, dict):
-        return
-
-    stories = top_stories.get("top_stories", [])
+    stories = summary.get("top_stories", [])
 
     if not stories:
+        st.info("No top stories available.")
         return
 
     st.markdown("### Top Stories")
 
     for story in stories:
+        if not isinstance(story, dict):
+            continue
+
         title = story.get("title", "Untitled story")
-        matched_article = find_matching_article(title, articles_df)
-
-        label = (
-            story.get("label")
-            or story.get("category")
-            or (matched_article["label"] if matched_article is not None else "Unknown")
-        )
-
-        source = (
-            story.get("source")
-            or (matched_article["source"] if matched_article is not None else "Unknown source")
-        )
-
+        label = story.get("label", "Unknown")
+        source = story.get("source", "Unknown source")
         published_at = story.get("published_at")
-
-        if not published_at and matched_article is not None:
-            published_at = matched_article["published_at"]
+        description = story.get("description", "")
+        why_it_matters = story.get("why_it_matters", "")
+        decision_relevance = story.get("decision_relevance", "")
+        url = story.get("url")
+        article_id = story.get("article_id")
 
         if pd.notnull(published_at):
-            published_at = pd.to_datetime(published_at).strftime("%Y-%m-%d %H:%M UTC")
+            published_at = pd.to_datetime(
+                published_at,
+                errors="coerce",
+                utc=True,
+            )
+
+            if pd.notnull(published_at):
+                published_at = published_at.strftime("%Y-%m-%d %H:%M UTC")
+            else:
+                published_at = "Unknown date"
         else:
             published_at = "Unknown date"
-
-        description = (
-            story.get("description")
-            or (matched_article["description"] if matched_article is not None else "")
-        )
-
-        reason = story.get("reason") or story.get("importance") or ""
-
-        url = story.get("url") or (
-            matched_article["url"] if matched_article is not None else None
-        )
 
         with st.expander(title):
             c1, c2, c3 = st.columns(3)
@@ -218,16 +372,23 @@ def render_daily_summary(summary: dict, articles_df: pd.DataFrame) -> None:
                 st.markdown("**Description**")
                 st.write(description)
 
-            if reason:
+            if why_it_matters:
                 st.markdown("**Why this matters**")
-                st.write(reason)
+                st.write(why_it_matters)
 
-            if url:
-                st.markdown(f"[Open article]({url})")
+            if decision_relevance:
+                st.markdown("**Decision relevance**")
+                st.write(decision_relevance)
+
+            if is_valid_url(url):
+                st.link_button("Open article", url)
+
+            if article_id:
+                st.caption(f"Article ID: {article_id}")
 
 
 def render_article_browser(df: pd.DataFrame) -> None:
-    st.subheader("Article browser")
+    st.subheader("Article Browser")
 
     if df.empty:
         st.info("No articles available for browsing.")
@@ -251,38 +412,52 @@ def render_article_browser(df: pd.DataFrame) -> None:
     elif sort_option == "Oldest first":
         display_df = display_df.sort_values("published_at", ascending=True)
     elif sort_option == "Action category":
-        display_df = display_df.sort_values(["label", "published_at"], ascending=[True, False])
+        display_df = display_df.sort_values(
+            ["label", "published_at"],
+            ascending=[True, False],
+        )
     elif sort_option == "Source":
-        display_df = display_df.sort_values(["source", "published_at"], ascending=[True, False])
+        display_df = display_df.sort_values(
+            ["source", "published_at"],
+            ascending=[True, False],
+        )
 
     max_rows = st.slider("Number of articles to display", 5, 100, 20)
     display_df = display_df.head(max_rows)
 
     for _, row in display_df.iterrows():
+        title = row.get("title", "Untitled article")
+
         published_str = (
             row["published_at"].strftime("%Y-%m-%d %H:%M UTC")
-            if pd.notnull(row["published_at"])
+            if pd.notnull(row.get("published_at"))
             else "Unknown"
         )
 
-        with st.expander(f"{row['title']}"):
+        with st.expander(title):
             meta1, meta2, meta3 = st.columns(3)
-            meta1.markdown(f"**Action:** {row['label']}")
-            meta2.markdown(f"**Source:** {row['source']}")
+            meta1.markdown(f"**Action:** {row.get('label', 'Unknown')}")
+            meta2.markdown(f"**Source:** {row.get('source', 'Unknown source')}")
             meta3.markdown(f"**Published:** {published_str}")
 
-            if pd.notnull(row["description"]) and str(row["description"]).strip():
+            description = row.get("description")
+            if pd.notnull(description) and str(description).strip():
                 st.markdown("**Description**")
-                st.write(row["description"])
+                st.write(description)
 
-            if pd.notnull(row["url"]) and str(row["url"]).strip():
-                st.markdown(f"[Open article]({row['url']})")
+            url = row.get("url")
+            if is_valid_url(url):
+                st.link_button("Open article", url)
 
-            with st.container():
-                st.markdown("**More details**")
-                st.caption(f"Article ID: {row['article_id']}")
-                if pd.notnull(row["raw_label"]) and str(row["raw_label"]).strip():
-                    st.caption(f"Model output: {row['raw_label']}")
+            st.markdown("**More details**")
+
+            article_id = row.get("article_id")
+            if pd.notnull(article_id):
+                st.caption(f"Article ID: {article_id}")
+
+            raw_label = row.get("raw_label")
+            if pd.notnull(raw_label) and str(raw_label).strip():
+                st.caption(f"Model output: {raw_label}")
 
 
 def main() -> None:
@@ -296,17 +471,26 @@ def main() -> None:
     summary = load_daily_summary()
 
     if df.empty:
-        st.warning("No classified articles found yet. Check whether the API is live and returning data.")
+        st.warning(
+            "No classified articles found yet. "
+            "Check whether the API is live and returning data."
+        )
         return
 
-    filtered_df = apply_filters(df)
+    section = st.segmented_control(
+        "View",
+        options=["Daily Summary", "Articles"],
+        default="Daily Summary",
+    )
 
-    tab1, tab2 = st.tabs(["Daily Summary", "Articles"])
+    if section == "Daily Summary":
+        summary_df = render_daily_summary_source_basis(df, summary)
+        render_metrics(df, summary_df)
+        render_daily_summary(summary)
 
-    with tab1:
-        render_daily_summary(summary, df)
-
-    with tab2:
+    elif section == "Articles":
+        filtered_df = apply_filters(df)
+        render_metrics(df, filtered_df)
         render_article_browser(filtered_df)
 
 
