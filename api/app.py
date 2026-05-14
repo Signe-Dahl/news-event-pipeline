@@ -10,7 +10,17 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Green Energy News API", version="1.0.0")
 
-DB_PATH = Path("/app/data/news.db")
+import os
+from pathlib import Path
+
+# Test - fjernes efter lokal test
+DB_PATH = Path(
+    os.getenv(
+        "DB_PATH",
+        Path(__file__).resolve().parent.parent / "data" / "news.db"
+    )
+)
+# DB_PATH = Path("/app/data/news.db")
 
 app.add_middleware(
     CORSMiddleware,
@@ -72,7 +82,7 @@ def get_daily_summary():
             summary_date,
             short_summary,
             key_focus,
-            top_stories,
+            summary_json,
             generated_at
         FROM daily_summaries
         ORDER BY summary_date DESC
@@ -87,13 +97,40 @@ def get_daily_summary():
 
     row = df.iloc[0].to_dict()
 
-    if row.get("top_stories"):
+    result = {
+        "summary_date": row.get("summary_date"),
+        "generated_at": row.get("generated_at"),
+    }
+
+    summary_json = row.get("summary_json")
+
+    if summary_json:
         try:
-            row["top_stories"] = json.loads(row["top_stories"])
+            parsed_summary = json.loads(summary_json)
+
+            if isinstance(parsed_summary, dict):
+                result.update(parsed_summary)
+
         except Exception:
             pass
 
-    return row
+    # fallback compatibility
+    if "executive_summary" not in result:
+        result["executive_summary"] = row.get("short_summary")
+
+    if "recommended_focus" not in result:
+        result["recommended_focus"] = row.get("key_focus")
+
+    if "decision_implications" not in result:
+        result["decision_implications"] = []
+
+    if "watchlist" not in result:
+        result["watchlist"] = []
+
+    if "top_stories" not in result:
+        result["top_stories"] = []
+
+    return result
     
 @app.get("/summary/daily-actions")
 def daily_actions(
