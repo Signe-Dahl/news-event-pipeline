@@ -13,14 +13,7 @@ app = FastAPI(title="Green Energy News API", version="1.0.0")
 import os
 from pathlib import Path
 
-# Test - fjernes efter lokal test
-DB_PATH = Path(
-    os.getenv(
-        "DB_PATH",
-        Path(__file__).resolve().parent.parent / "data" / "news.db"
-    )
-)
-# DB_PATH = Path("/app/data/news.db")
+DB_PATH = Path("/app/data/news.db")
 
 app.add_middleware(
     CORSMiddleware,
