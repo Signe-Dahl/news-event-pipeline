@@ -18,6 +18,14 @@ API_BASE_URL = st.secrets.get(
     os.getenv("API_BASE_URL", "https://Signe22-Article-Data-API.hf.space"),
 )
 
+def ensure_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    df = df.copy()
+
+    for column in columns:
+        if column not in df.columns:
+            df[column] = None
+
+    return df
 
 @st.cache_data(ttl=300)
 def load_classified_articles() -> pd.DataFrame:
@@ -35,8 +43,31 @@ def load_classified_articles() -> pd.DataFrame:
         if df.empty:
             return df
 
-        df["published_at"] = pd.to_datetime(df.get("published_at"), errors="coerce", utc=True)
-        df["classified_at"] = pd.to_datetime(df.get("classified_at"), errors="coerce", utc=True)
+        df = ensure_columns(
+            df,
+            [
+                "article_id",
+                "title",
+                "description",
+                "source",
+                "label",
+                "raw_label",
+                "url",
+                "published_at",
+                "classified_at",
+            ],
+        )
+
+        df["published_at"] = pd.to_datetime(
+            df["published_at"],
+            errors="coerce",
+            utc=True,
+        )
+        df["classified_at"] = pd.to_datetime(
+            df["classified_at"],
+            errors="coerce",
+            utc=True,
+        )
 
         df["published_date"] = df["published_at"].dt.date
         df["published_day"] = df["published_at"].dt.strftime("%Y-%m-%d")
@@ -66,32 +97,9 @@ def load_daily_summary() -> dict:
 
 
 def normalize_summary_payload(summary: dict) -> dict:
-    """
-    Supports both the improved API shape and the previous legacy shape.
-
-    Preferred shape:
-    {
-        "summary_date": "...",
-        "generated_at": "...",
-        "executive_summary": "...",
-        "key_signal": "...",
-        "recommended_focus": "...",
-        "decision_implications": [...],
-        "watchlist": [...],
-        "top_stories": [...]
-    }
-
-    Legacy shape:
-    {
-        "summary_date": "...",
-        "short_summary": "...",
-        "key_focus": "...",
-        "top_stories": "{\"executive_summary\": ..., \"top_stories\": [...]}"
-    }
-    """
     normalized = dict(summary)
 
-    nested_summary = summary.get("summary_json") or summary.get("top_stories")
+    nested_summary = summary.get("summary_json")
 
     if isinstance(nested_summary, str):
         try:
@@ -101,7 +109,7 @@ def normalize_summary_payload(summary: dict) -> dict:
         except Exception:
             pass
 
-    elif isinstance(nested_summary, dict) and "top_stories" in nested_summary:
+    elif isinstance(nested_summary, dict):
         normalized.update(nested_summary)
 
     normalized["executive_summary"] = (
@@ -127,12 +135,17 @@ def normalize_summary_payload(summary: dict) -> dict:
 
     return normalized
 
+def is_valid_url(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+
+    return value.startswith(("http://", "https://"))
 
 def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     st.sidebar.header("Filters")
 
-    label_options = sorted(df["label"].dropna().unique().tolist()) if not df.empty else []
-    source_options = sorted(df["source"].dropna().unique().tolist()) if not df.empty else []
+    label_options = sorted(df["label"].dropna().unique().tolist())
+    source_options = sorted(df["source"].dropna().unique().tolist())
 
     default_labels = [
         label
@@ -207,9 +220,9 @@ def render_metrics(df: pd.DataFrame, filtered_df: pd.DataFrame) -> None:
     c1, c2, c3, c4 = st.columns(4)
 
     c1.metric("Articles", len(df))
-    c2.metric("Filtered", len(filtered_df))
-    c3.metric("Sources", df["source"].nunique() if "source" in df else 0)
-    c4.metric("Categories", df["label"].nunique() if "label" in df else 0)
+    c2.metric("Shown", len(filtered_df))
+    c3.metric("Sources", df["source"].nunique())
+    c4.metric("Categories", df["label"].nunique())
 
 
 def render_bullet_list(items: list[str], empty_message: str) -> None:
@@ -219,6 +232,62 @@ def render_bullet_list(items: list[str], empty_message: str) -> None:
 
     for item in items:
         st.markdown(f"- {item}")
+
+def get_summary_source_articles(
+    df: pd.DataFrame,
+    summary: dict,
+    fallback_limit: int = 15,
+) -> pd.DataFrame:
+    stories = summary.get("top_stories", [])
+
+    story_ids = {
+        str(story.get("article_id"))
+        for story in stories
+        if isinstance(story, dict) and story.get("article_id")
+    }
+
+    if story_ids:
+        matched_df = df[df["article_id"].astype(str).isin(story_ids)]
+
+        if not matched_df.empty:
+            return matched_df
+
+    relevant_df = df[df["label"] != "not relevant to field"].copy()
+
+    if "published_at" in relevant_df:
+        relevant_df = relevant_df.sort_values("published_at", ascending=False)
+
+    return relevant_df.head(fallback_limit)
+
+
+def render_daily_summary_source_basis(
+    df: pd.DataFrame,
+    summary: dict,
+) -> pd.DataFrame:
+    summary_df = get_summary_source_articles(df, summary)
+
+    generated_at = summary.get("generated_at")
+    top_story_count = len(summary.get("top_stories", []))
+
+    formatted_generated_at = None
+
+    if generated_at:
+        parsed = pd.to_datetime(generated_at, errors="coerce", utc=True)
+
+        if pd.notnull(parsed):
+            formatted_generated_at = parsed.strftime("%Y-%m-%d %H:%M UTC")
+
+    if formatted_generated_at:
+        st.caption(
+            f"Summary generated {formatted_generated_at} · "
+            f"{top_story_count} top stories included"
+        )
+    else:
+        st.caption(
+            f"{top_story_count} top stories included in this summary"
+        )
+
+    return summary_df
 
 
 def render_daily_summary(summary: dict) -> None:
@@ -280,7 +349,11 @@ def render_daily_summary(summary: dict) -> None:
         article_id = story.get("article_id")
 
         if pd.notnull(published_at):
-            published_at = pd.to_datetime(published_at, errors="coerce", utc=True)
+            published_at = pd.to_datetime(
+                published_at,
+                errors="coerce",
+                utc=True,
+            )
 
             if pd.notnull(published_at):
                 published_at = published_at.strftime("%Y-%m-%d %H:%M UTC")
@@ -307,8 +380,8 @@ def render_daily_summary(summary: dict) -> None:
                 st.markdown("**Decision relevance**")
                 st.write(decision_relevance)
 
-            if url:
-                st.markdown(f"[Open article]({url})")
+            if is_valid_url(url):
+                st.link_button("Open article", url)
 
             if article_id:
                 st.caption(f"Article ID: {article_id}")
@@ -339,9 +412,15 @@ def render_article_browser(df: pd.DataFrame) -> None:
     elif sort_option == "Oldest first":
         display_df = display_df.sort_values("published_at", ascending=True)
     elif sort_option == "Action category":
-        display_df = display_df.sort_values(["label", "published_at"], ascending=[True, False])
+        display_df = display_df.sort_values(
+            ["label", "published_at"],
+            ascending=[True, False],
+        )
     elif sort_option == "Source":
-        display_df = display_df.sort_values(["source", "published_at"], ascending=[True, False])
+        display_df = display_df.sort_values(
+            ["source", "published_at"],
+            ascending=[True, False],
+        )
 
     max_rows = st.slider("Number of articles to display", 5, 100, 20)
     display_df = display_df.head(max_rows)
@@ -367,8 +446,8 @@ def render_article_browser(df: pd.DataFrame) -> None:
                 st.write(description)
 
             url = row.get("url")
-            if pd.notnull(url) and str(url).strip():
-                st.markdown(f"[Open article]({url})")
+            if is_valid_url(url):
+                st.link_button("Open article", url)
 
             st.markdown("**More details**")
 
@@ -392,19 +471,26 @@ def main() -> None:
     summary = load_daily_summary()
 
     if df.empty:
-        st.warning("No classified articles found yet. Check whether the API is live and returning data.")
+        st.warning(
+            "No classified articles found yet. "
+            "Check whether the API is live and returning data."
+        )
         return
 
-    filtered_df = apply_filters(df)
+    section = st.segmented_control(
+        "View",
+        options=["Daily Summary", "Articles"],
+        default="Daily Summary",
+    )
 
-    render_metrics(df, filtered_df)
-
-    tab1, tab2 = st.tabs(["Daily Summary", "Articles"])
-
-    with tab1:
+    if section == "Daily Summary":
+        summary_df = render_daily_summary_source_basis(df, summary)
+        render_metrics(df, summary_df)
         render_daily_summary(summary)
 
-    with tab2:
+    elif section == "Articles":
+        filtered_df = apply_filters(df)
+        render_metrics(df, filtered_df)
         render_article_browser(filtered_df)
 
 
