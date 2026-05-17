@@ -48,12 +48,10 @@ def load_monitoring_summary() -> dict:
 def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     st.sidebar.header("Monitoring Filters")
 
-    status_options = sorted(df["overall_status"].dropna().unique().tolist()) if not df.empty else []
     label_judgment_options = sorted(df["label_judgment"].dropna().unique().tolist()) if not df.empty else []
     predicted_label_options = sorted(df["predicted_label"].dropna().unique().tolist()) if not df.empty else []
     source_options = sorted(df["source"].dropna().unique().tolist()) if not df.empty else []
 
-    selected_status = st.sidebar.multiselect("Overall status", status_options, default=status_options)
     selected_label_judgment = st.sidebar.multiselect("Label judgment", label_judgment_options, default=label_judgment_options)
     selected_predicted_labels = st.sidebar.multiselect("Predicted labels", predicted_label_options, default=[])
     selected_sources = st.sidebar.multiselect("Sources", source_options, default=[])
@@ -75,9 +73,6 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     search_term = st.sidebar.text_input("Search title or description")
 
     filtered = df.copy()
-
-    if selected_status:
-        filtered = filtered[filtered["overall_status"].isin(selected_status)]
 
     if selected_label_judgment:
         filtered = filtered[filtered["label_judgment"].isin(selected_label_judgment)]
@@ -112,21 +107,28 @@ def render_summary(summary: dict, df: pd.DataFrame) -> None:
     st.subheader("Monitoring Overview")
 
     c1, c2, c3, c4 = st.columns(4)
+
     c1.metric("Total monitored", summary.get("total_monitored", 0))
     c2.metric("Needs review", summary.get("needs_review", 0))
     c3.metric("Shown after filters", len(df))
-    c4.metric("Problem rate", f"{(len(df[df['overall_status'] != 'ok']) / len(df) * 100):.1f}%" if len(df) else "0.0%")
+    c4.metric(
+        "Problem rate",
+        f"{(len(df[df['overall_status'] != 'ok']) / len(df) * 100):.1f}%"
+        if len(df)
+        else "0.0%",
+    )
 
     if df.empty:
         st.info("No monitoring results match the current filters.")
         return
 
-    st.markdown("#### Monitoring status distribution")
-    status_df = df["overall_status"].value_counts().rename_axis("overall_status").reset_index(name="count")
-    st.bar_chart(status_df.set_index("overall_status"))
-
     st.markdown("#### Label judgment distribution")
-    label_df = df["label_judgment"].value_counts().rename_axis("label_judgment").reset_index(name="count")
+    label_df = (
+        df["label_judgment"]
+        .value_counts()
+        .rename_axis("label_judgment")
+        .reset_index(name="count")
+    )
     st.bar_chart(label_df.set_index("label_judgment"))
 
 def render_problem_patterns(df: pd.DataFrame) -> None:
@@ -202,7 +204,71 @@ def render_review_queue(df: pd.DataFrame) -> None:
             if pd.notnull(row["url"]) and str(row["url"]).strip():
                 st.markdown(f"[Open article]({row['url']})")
 
+def render_correct_cases(df: pd.DataFrame) -> None:
+    st.subheader("Correct Classification Examples")
 
+    if df.empty:
+        st.info("No monitoring results available.")
+        return
+
+    correct_df = df[df["label_judgment"] == "correct"].copy()
+
+    if correct_df.empty:
+        st.info("No correct classifications available.")
+        return
+
+    max_rows = st.slider(
+        "Number of correct examples to display",
+        5,
+        100,
+        20,
+        key="correct_slider",
+    )
+
+    correct_df = correct_df.sort_values("evaluated_at", ascending=False).head(max_rows)
+
+    for _, row in correct_df.iterrows():
+        published_str = (
+            row["published_at"].strftime("%Y-%m-%d %H:%M UTC")
+            if pd.notnull(row["published_at"])
+            else "Unknown"
+        )
+
+        evaluated_str = (
+            row["evaluated_at"].strftime("%Y-%m-%d %H:%M UTC")
+            if pd.notnull(row["evaluated_at"])
+            else "Unknown"
+        )
+
+        with st.expander(f"{row['title']}"):
+            m1, m2, m3, m4 = st.columns(4)
+
+            m1.markdown(f"**Predicted label:** {row['predicted_label']}")
+            m2.markdown(f"**Overall status:** {row['overall_status']}")
+            m3.markdown(f"**Source:** {row['source']}")
+            m4.markdown(f"**Published:** {published_str}")
+
+            st.markdown("**Description**")
+            st.write(
+                row["description"]
+                if pd.notnull(row["description"])
+                else "No description"
+            )
+
+            st.markdown("**Judge output**")
+            st.markdown(
+                f"**Label quality:** {row['label_judgment']} "
+                f"({row['label_confidence']})"
+            )
+            st.write(row["label_explanation"])
+
+            st.markdown("**Metadata**")
+            st.caption(f"Article ID: {row['article_id']}")
+            st.caption(f"Evaluated at: {evaluated_str}")
+
+            if pd.notnull(row["url"]) and str(row["url"]).strip():
+                st.markdown(f"[Open article]({row['url']})")
+                
 def render_full_table(df: pd.DataFrame) -> None:
     st.subheader("Monitoring Table")
 
@@ -217,7 +283,6 @@ def render_full_table(df: pd.DataFrame) -> None:
             "predicted_label",
             "label_judgment",
             "label_confidence",
-            "overall_status",
             "requires_human_review",
             "title",
         ]
@@ -247,9 +312,15 @@ def main() -> None:
 
     filtered_df = apply_filters(df)
 
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["Overview", "Problem Patterns", "Review Queue", "Table"]
-    )
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    [
+        "Overview",
+        "Problem Patterns",
+        "Correct Classifications",
+        "Review Queue",
+        "Table",
+    ]
+)
 
     with tab1:
         render_summary(summary, filtered_df)
@@ -258,9 +329,12 @@ def main() -> None:
         render_problem_patterns(filtered_df)
 
     with tab3:
-        render_review_queue(filtered_df)
+        render_correct_cases(filtered_df)
 
     with tab4:
+        render_review_queue(filtered_df)
+
+    with tab5:
         render_full_table(filtered_df)
 
 
