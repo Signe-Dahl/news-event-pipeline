@@ -23,6 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+LAST_14_DAYS_CONDITION = "date(published_at) >= date('now', '-14 days')"
 
 def get_connection() -> sqlite3.Connection:
     return sqlite3.connect(DB_PATH)
@@ -41,11 +42,12 @@ def health():
 def get_labels():
     conn = get_connection()
     query = """
-        SELECT DISTINCT label
-        FROM classified_articles
-        WHERE label IS NOT NULL
-            AND label != 'not relevant to field'
-        ORDER BY label
+    SELECT DISTINCT label
+    FROM classified_articles
+    WHERE label IS NOT NULL
+        AND label != 'not relevant to field'
+        AND """ + LAST_14_DAYS_CONDITION + """
+    ORDER BY label
     """
     df = pd.read_sql_query(query, conn)
     conn.close()
@@ -56,11 +58,12 @@ def get_labels():
 def get_sources():
     conn = get_connection()
     query = """
-        SELECT DISTINCT source
-        FROM classified_articles
-        WHERE source IS NOT NULL
-            AND label != 'not relevant to field'
-        ORDER BY source
+    SELECT DISTINCT source
+    FROM classified_articles
+    WHERE source IS NOT NULL
+        AND label != 'not relevant to field'
+        AND """ + LAST_14_DAYS_CONDITION + """
+    ORDER BY source
     """
     df = pd.read_sql_query(query, conn)
     conn.close()
@@ -81,6 +84,7 @@ def get_daily_summary():
         ORDER BY summary_date DESC
         LIMIT 1
     """
+
 
     df = pd.read_sql_query(query, conn)
     conn.close()
@@ -133,14 +137,14 @@ def daily_actions(
     conn = get_connection()
 
     query = """
-        SELECT
-            date(published_at) AS day,
-            label,
-            COUNT(*) AS count
-        FROM classified_articles
-        WHERE 1=1
-            AND label != 'not relevant to field'
-    """
+    SELECT
+        date(published_at) AS day,
+        label,
+        COUNT(*) AS count
+    FROM classified_articles
+    WHERE 1=1
+        AND label != 'not relevant to field'
+        AND """ + LAST_14_DAYS_CONDITION
     params = []
 
     if start_date:
@@ -189,7 +193,8 @@ def get_articles(
     FROM classified_articles
     WHERE 1=1
       AND label != 'not relevant to field'
-"""
+      AND """ + LAST_14_DAYS_CONDITION
+    
     params = []
 
     if label:
@@ -242,28 +247,28 @@ def get_monitoring_results(
     conn = get_connection()
 
     query = """
-        SELECT
-            monitoring_id,
-            article_id,
-            title,
-            description,
-            clean_text,
-            predicted_label,
-            source,
-            url,
-            published_at,
-            classified_at,
-            label_judgment,
-            label_confidence,
-            label_explanation,
-            overall_status,
-            requires_human_review,
-            judge_model,
-            raw_judge_response,
-            evaluated_at
-        FROM monitoring_results
-        WHERE 1=1
-    """
+    SELECT
+        monitoring_id,
+        article_id,
+        title,
+        description,
+        clean_text,
+        predicted_label,
+        source,
+        url,
+        published_at,
+        classified_at,
+        label_judgment,
+        label_confidence,
+        label_explanation,
+        overall_status,
+        requires_human_review,
+        judge_model,
+        raw_judge_response,
+        evaluated_at
+    FROM monitoring_results
+    WHERE 1=1
+        AND """ + LAST_14_DAYS_CONDITION
     params = []
 
     if overall_status:
@@ -313,57 +318,68 @@ def get_monitoring_summary():
     conn = get_connection()
 
     total_monitored = int(pd.read_sql_query(
-        "SELECT COUNT(*) AS n FROM monitoring_results",
-        conn
+    """
+    SELECT COUNT(*) AS n
+    FROM monitoring_results
+    WHERE """ + LAST_14_DAYS_CONDITION,
+    conn
     )["n"].iloc[0])
 
     needs_review = int(pd.read_sql_query(
-        "SELECT COUNT(*) AS n FROM monitoring_results WHERE requires_human_review = 1",
-        conn
+    """
+    SELECT COUNT(*) AS n
+    FROM monitoring_results
+    WHERE requires_human_review = 1
+      AND """ + LAST_14_DAYS_CONDITION,
+    conn
     )["n"].iloc[0])
 
     label_distribution = pd.read_sql_query(
-        """
-        SELECT label_judgment, COUNT(*) AS count
-        FROM monitoring_results
-        GROUP BY label_judgment
-        ORDER BY count DESC
-        """,
-        conn
+    """
+    SELECT label_judgment, COUNT(*) AS count
+    FROM monitoring_results
+    WHERE """ + LAST_14_DAYS_CONDITION + """
+    GROUP BY label_judgment
+    ORDER BY count DESC
+    """,
+    conn
     ).to_dict(orient="records")
 
     status_distribution = pd.read_sql_query(
-        """
-        SELECT overall_status, COUNT(*) AS count
-        FROM monitoring_results
-        GROUP BY overall_status
-        ORDER BY count DESC
-        """,
-        conn
+    """
+    SELECT overall_status, COUNT(*) AS count
+    FROM monitoring_results
+    WHERE """ + LAST_14_DAYS_CONDITION + """
+    GROUP BY overall_status
+    ORDER BY count DESC
+    """,
+    conn
     ).to_dict(orient="records")
 
     common_problem_labels = pd.read_sql_query(
-        """
-        SELECT predicted_label, COUNT(*) AS count
-        FROM monitoring_results
-        WHERE overall_status != 'ok'
-        GROUP BY predicted_label
-        ORDER BY count DESC
-        """,
-        conn
+    """
+    SELECT predicted_label, COUNT(*) AS count
+    FROM monitoring_results
+    WHERE overall_status != 'ok'
+      AND """ + LAST_14_DAYS_CONDITION + """
+    GROUP BY predicted_label
+    ORDER BY count DESC
+    """,
+    conn
     ).to_dict(orient="records")
 
     daily_issues = pd.read_sql_query(
-        """
-        SELECT
-            date(evaluated_at) AS day,
-            overall_status,
-            COUNT(*) AS count
-        FROM monitoring_results
-        GROUP BY date(evaluated_at), overall_status
-        ORDER BY day ASC, overall_status ASC
-        """,
-        conn
+    """
+    SELECT
+        date(evaluated_at) AS day,
+        overall_status,
+        COUNT(*) AS count
+    FROM monitoring_results
+    WHERE """ + LAST_14_DAYS_CONDITION + """
+    GROUP BY date(evaluated_at), overall_status
+    ORDER BY day ASC, overall_status ASC
+    """,
+    conn
     ).to_dict(orient="records")
 
     conn.close()
@@ -383,25 +399,26 @@ def get_review_queue(limit: int = Query(100, ge=1, le=500)):
     conn = get_connection()
 
     query = """
-        SELECT
-            monitoring_id,
-            article_id,
-            title,
-            description,
-            predicted_label,
-            source,
-            url,
-            published_at,
-            label_judgment,
-            label_confidence,
-            label_explanation,
-            overall_status,
-            requires_human_review,
-            evaluated_at
-        FROM monitoring_results
-        WHERE requires_human_review = 1
-        ORDER BY evaluated_at DESC
-        LIMIT ?
+    SELECT
+        monitoring_id,
+        article_id,
+        title,
+        description,
+        predicted_label,
+        source,
+        url,
+        published_at,
+        label_judgment,
+        label_confidence,
+        label_explanation,
+        overall_status,
+        requires_human_review,
+        evaluated_at
+    FROM monitoring_results
+    WHERE requires_human_review = 1
+        AND """ + LAST_14_DAYS_CONDITION + """
+    ORDER BY evaluated_at DESC
+    LIMIT ?
     """
 
     df = pd.read_sql_query(query, conn, params=[limit])

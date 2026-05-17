@@ -13,10 +13,7 @@ st.set_page_config(
     layout="wide",
 )
 
-API_BASE_URL = st.secrets.get(
-    "API_BASE_URL",
-    os.getenv("API_BASE_URL", "https://Signe22-Article-Data-API.hf.space"),
-)
+API_BASE_URL = "https://Signe22-Article-Data-API.hf.space"
 
 def ensure_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     df = df.copy()
@@ -465,6 +462,17 @@ def main() -> None:
     st.write(
         "This dashboard gives an overview of classified green energy and climate-tech news, "
         "with filters for action categories, dates, sources, and search terms."
+    )
+
+    st.error(
+        """
+        ⚠️ **Important Notice**
+        This dashboard uses Large Language Models (LLMs) to classify and summarize news articles.
+        The outputs are probabilistic and may contain errors, biases, or misinterpretations.
+        The system should be used as a decision-support tool rather than an authoritative source.
+        Users are encouraged to critically evaluate the presented summaries, classifications,
+        and highlighted stories alongside the underlying article content.
+        """
     )
 
     df = load_classified_articles()

@@ -265,6 +265,9 @@ Predicted label: {predicted_label}
 Judge only whether the predicted label is appropriate.
 
 Important rules:
+- The project scope is European green energy and climate technology.
+- If the article has no clear relevance to Europe, the EU, or a European country, then "{NOT_RELEVANT_LABEL}" is the appropriate label.
+- If the predicted label is "{NOT_RELEVANT_LABEL}" and the article has no clear European relevance, then the classifier is correct, even if the article is generally about green energy or climate technology.
 - If the article is not primarily about green energy, climate technology, decarbonization, renewable energy infrastructure, clean energy policy, or climate-relevant industrial technology, then labels such as "market/finance", "other", or "new product" are not appropriate.
 - Consumer shopping deals, phone battery rumors, power tool battery deals, generic electronics, and unrelated product discounts should usually be judged incorrect unless they are classified as "{NOT_RELEVANT_LABEL}".
 - If the predicted label is "{NOT_RELEVANT_LABEL}" and the article is not actually about green energy or climate technology, then the classifier is correct.
