@@ -1,37 +1,40 @@
 # Green Energy News Event Pipeline
 
-This project implements an end-to-end data pipeline for collecting, processing, classifying, and monitoring news articles related to green energy and climate technology. The system combines automated data collection, LLM-based classification, and LLM-as-a-judge evaluation to provide insights into both pipeline performance.
+This project implements an end-to-end data pipeline for collecting, processing, classifying, summarizing and monitoring news articles related to green energy and climate technology. The system combines automated data collection, LLM-based classification, AI-generated daily summarization, and LLM-as-a-judge evaluation to provide insights into both pipeline performance and emerging developments within the green energy domain.
 
 ---
 
 ## Project Overview
 ### Pipeline diagram
-<img width="1020" height="894" alt="image" src="https://github.com/user-attachments/assets/c3a5f7db-f50d-4764-9bfb-625cb25417f5" />
-
+![Pipeline Diagram](https://raw.githubusercontent.com/Signe-Dahl/news-event-pipeline/monitoring/Pipeline.png)
 
 ### Description of steps
 The pipeline performs the following steps:
 
 1. **Data Collection**  
-   Retrieves articles from a news API using a targeted query for green energy topics.
+   Retrieves articles from both European Commission RSS feed and NewsAPI using targeted queries related to green energy topics within EU.
 
 2. **Preprocessing**  
    Cleans and filters articles to remove noise and prepare them for classification.
 
 3. **Classification**  
-   Uses a large language model (via API) to assign action categories to each article.
+   Uses a large language model (via API) to assign an action category to each article.
 
-4. **Monitoring (LLM-as-a-Judge)**  
+4. **Daily Summarization**  
+   Generates AI-based daily summaries, decision implications and selected top stories from the collected articles.
+
+5. **Monitoring (LLM-as-a-Judge)**  
    A Second LLM evaluates:
    - Whether the predicted label is correct
 
-5. **Storage**  
+6. **Storage**  
    All data is stored in a SQLite database:
    - `raw_articles`
    - `classified_articles`
    - `monitoring_results`
+   - `daily_summaries`
 
-6. **API + Frontend**  
+7. **API + Frontend**  
    Data is exposed through a FastAPI backend and visualized using Streamlit dashboards.
 
 ---
@@ -58,22 +61,23 @@ GROQ_API_KEY=your_groq_key
 ## How to Run the Pipeline
 
 1. Install dependencies
-- pip install -r backend/requirements.txt
+- `pip install -r backend/requirements.txt`
+
 2. Run pipeline manually
-- python backend/main.py
+- `python backend/main.py`
 
 This will:
-- Collect articles
-- Preprocess data
-- Classify articles
-- Run monitoring evaluation
-- Store results in data/news.db
+- Collect articles from NewsAPI and EU RSS feed
+- Preprocess article data
+- Classify articles using an LLM
+- Generate daily summaries and top stories
+- Store results in `data/news.db`
 
 ---
 
 ## Automated Pipeline (GitHub Actions)
 
-The pipeline runs automatically daily at 07:00 Danish time via GitHub Actions.
+The pipeline runs automatically every morning at a set time via GitHub Actions.
 
 It performs:
 - Full pipeline execution
@@ -88,9 +92,10 @@ It performs:
 The system tracks multiple types of artefacts:
 
 Data artefacts:
-- raw_articles
-- classified_articles
-- monitoring_results
+- `raw_articles`
+- `classified_articles`
+- `monitoring_results`
+- `daily_summaries`
 
 Model artefacts:
 - LLM configurations and prompts (stored in code)
@@ -162,6 +167,7 @@ The monitoring dashboard provides insights into:
 - Relevance filtering performance
 - Low-confidence predictions
 - Problematic sources and categories
+- Emerging problem patterns
 
 Deployed here: https://huggingface.co/spaces/Signe22/Green-Energy-News-Monitoring
 
@@ -171,6 +177,6 @@ Deployed here: https://huggingface.co/spaces/Signe22/Green-Energy-News-Monitorin
 
 To reproduce the project:
 1. Clone the repository
-2. Create a local .env file or put the required environment variables into GitHub secrets
+2. Create a local `.env` file or put the required environment variables into GitHub secrets
 3. Run the pipeline locally or via GitHub Actions
 4. Launch the Streamlit app using Docker Compose
