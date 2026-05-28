@@ -148,12 +148,12 @@ docker login
 
 Then pull the pre-built image:
 ```bash
-docker pull signe1504/news-dashboard:1.0
+docker pull signe1504/news-dashboard:2.0
 ```
 
 Run the container locally:
 ```bash
-docker run -p 8501:8501 signe1504/news-dashboard:1.0
+docker run -p 8501:8501 signe1504/news-dashboard:2.0
 ```
 
 Then open: http://localhost:8501
