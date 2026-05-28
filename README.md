@@ -20,12 +20,12 @@ The pipeline performs the following steps:
 3. **Classification**  
    Uses a large language model (via API) to assign an action category to each article.
 
-4. **Monitoring (LLM-as-a-Judge)**  
+4. **Daily Summarization**  
+   Generates AI-based daily summaries, decision implications and selected top stories from the collected articles.
+
+5. **Monitoring (LLM-as-a-Judge)**  
    A Second LLM evaluates:
    - Whether the predicted label is correct
-
-5. **Daily Summarization**  
-   Generates AI-based daily summaries, decision implications and selected top stories from the collected articles.
 
 6. **Storage**  
    All data is stored in a SQLite database:
