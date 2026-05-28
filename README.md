@@ -12,7 +12,7 @@ This project implements an end-to-end data pipeline for collecting, processing, 
 The pipeline performs the following steps:
 
 1. **Data Collection**  
-   Retrieves articles from both European Commission RSS feed and NewsAPI using targeted queries related to green energy topics within EU.
+   Retrieves articles from both European Commission RSS feeds and NewsAPI using targeted queries related to green energy topics within the EU.
 
 2. **Preprocessing**  
    Cleans and filters articles to remove noise and prepare them for classification.
@@ -20,12 +20,12 @@ The pipeline performs the following steps:
 3. **Classification**  
    Uses a large language model (via API) to assign an action category to each article.
 
-4. **Daily Summarization**  
-   Generates AI-based daily summaries, decision implications and selected top stories from the collected articles.
-
-5. **Monitoring (LLM-as-a-Judge)**  
+4. **Monitoring (LLM-as-a-Judge)**  
    A Second LLM evaluates:
    - Whether the predicted label is correct
+
+5. **Daily Summarization**  
+   Generates AI-based daily summaries, decision implications and selected top stories from the collected articles.
 
 6. **Storage**  
    All data is stored in a SQLite database:
@@ -36,7 +36,6 @@ The pipeline performs the following steps:
 
 7. **API + Frontend**  
    Data is exposed through a FastAPI backend and visualized using Streamlit dashboards.
-
 ---
 
 ## Configuration
