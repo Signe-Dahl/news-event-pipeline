@@ -6,7 +6,7 @@ This project implements an end-to-end data pipeline for collecting, processing, 
 
 ## Project Overview
 ### Pipeline diagram
-![Pipeline Diagram](https://raw.githubusercontent.com/Signe-Dahl/news-event-pipeline/monitoring/Pipeline.png)
+![Pipeline Diagram](https://raw.githubusercontent.com/Signe-Dahl/news-event-pipeline/monitoring/Pipeline.png) 
 
 ### Description of steps
 The pipeline performs the following steps:
