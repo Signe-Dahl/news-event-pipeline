@@ -122,6 +122,9 @@ API (FastAPI): https://huggingface.co/spaces/Signe22/Article_Data_API
 
 The Streamlit frontend is containerized using Docker and started with Docker Compose.
 
+Docker Hub repository:
+https://hub.docker.com/r/signe1504/news-dashboard
+
 ### Run the frontend with Docker Compose
 
 This method requires that the repository has been cloned locally.
