@@ -125,7 +125,8 @@ Rules:
 - The article must primarily concern green energy, climate technology, decarbonization, sustainability, renewable energy, clean transport, batteries, hydrogen, electricity infrastructure or climate policy.
 - If the article is not clearly relevant to the domain, classify it as "not relevant to field".
 - If the article has no explicit connection to Europe, the EU, or a named European country, include "not relevant to field" as one of the labels.
-- Articles that are "not relevant to field" may still receive additional event-related labels if appropriate.
+- If the article is not clearly relevant to the domain, you MUST include "not relevant to field" as the first label.
+- Articles classified as "not relevant to field" may additionally receive other event-related labels if appropriate.
 - If multiple categories are strongly represented in the article, assign multiple labels.
 - Prefer assigning multiple labels when the article clearly combines several event types.
 - Order the labels by importance and place the most prominent or dominant category first.
