@@ -2,7 +2,6 @@ name: Daily Pipeline + Update HF API DB
 
 on:
   workflow_dispatch:
-  schedule: 
 
 permissions:
   contents: write
